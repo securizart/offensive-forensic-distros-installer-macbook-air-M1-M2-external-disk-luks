@@ -1,0 +1,94 @@
+# exclude-list.txt
+#
+# WARNING: this file is NO LONGER used as the exclude= argument to
+# `state.apply` — doing so breaks Salt's high-state compilation (see
+# remnux/FINDINGS.md, section "Why exclude= was abandoned as an
+# install mechanism", for the real error and the explanation). It's
+# kept as reference documentation of the known failure points in a
+# full remnux.addon run. The actual cleanup of broken binaries is
+# done by remnux/cleanup.sh after a run with no exclusions.
+#
+# List of remnux/salt-states .sls files categorized during the
+# investigation of the ~120 failures from the full run on arm64.
+# Format: one sls path per line (dotted path). Lines starting with # are ignored.
+# Category in brackets at the end of each comment:
+#   [LOUD]     Salt marks Failed; amd64 .deb with unresolvable apt dependencies.
+#   [SILENT]   Salt marks Succeeded, but the installed binary throws "Exec format error".
+#   [PIP-TAG]  pip explicitly rejects the wheel ("not a supported wheel on this platform").
+#   [BUILD]    Fails compiling/packaging from source; may not be arm64-specific.
+#   [NO-PKG]   The package simply doesn't exist in Ubuntu's repos for this version/arch.
+#   [SALT-MOD] The Salt state module isn't available in this Salt version (3008.2).
+#   [CASCADE]  Fails because it depends on something else in this same list.
+
+# ---- LOUD group: amd64 .deb via pkg.installed with unresolvable :amd64 deps ----
+remnux.packages.inspircd                 # [LOUD] unresolvable :amd64 deps, confirmed with real output
+remnux.tools.detect-it-easy              # [LOUD] unresolvable Qt5 :amd64 deps, confirmed with real output
+
+# ---- SILENT group: loose binary/AppImage/tarball, no dpkg involved ----
+remnux.tools.docker-compose              # [SILENT] ELF x86-64, Exec format error, confirmed
+remnux.tools.cutter                      # [SILENT] ELF x86-64, Exec format error, confirmed
+remnux.tools.redress                     # [SILENT] ELF x86-64, Exec format error, confirmed
+remnux.tools.yara-x                      # [SILENT] ELF x86-64 pie, Exec format error, confirmed
+
+# ---- PIP-TAG group: hardcoded manylinux_x86_64 wheel ----
+# stpyv8 isn't an independently applicable .sls (it only defines a Jinja macro),
+# it's invoked from peepdf-3.sls and thug.sls. When the wheel's pip.installed fails,
+# both .sls files end up with that one state Failed, but the rest of each still applies.
+# They're excluded whole here to get a "clean" run; if you'd rather keep the rest
+# of each one's packages, remove these two lines and accept those 2 point Failed states.
+remnux.python3-packages.peepdf-3         # [PIP-TAG][CASCADE] x86_64 stpyv8 wheel rejected by pip
+remnux.python3-packages.thug             # [PIP-TAG][CASCADE] x86_64 stpyv8 wheel rejected by pip
+
+# ---- BUILD group: source-compilation failures in the full run ----
+# Not yet confirmed as "arm64-only"; some might be fixable by updating build
+# tools (cmake, config.guess/config.sub) rather than being a real architecture limit.
+remnux.python3-packages.peframe          # [BUILD] fails compiling the readline extension (outdated config.guess, doesn't recognize aarch64)
+remnux.python3-packages.qiling           # [BUILD] fails compiling keystone-engine (cmake not found)
+remnux.python3-packages.pe-tree          # [BUILD] pyqt5 dependency conflict (no arm64 wheel available at the pinned version)
+remnux.python3-packages.vivisect         # [BUILD] pyqt5 5.15.7 fails generating metadata (missing qmake / build system)
+
+# ---- NO-PKG group: package doesn't exist in Ubuntu's repos for this version ----
+remnux.packages.libemu
+remnux.packages.baksmali
+remnux.packages.aeskeyfind
+remnux.packages.7zip
+remnux.packages.edb-debugger
+remnux.packages.xorstrings
+remnux.packages.bearparser
+remnux.tools.manalyze
+remnux.packages.signsrch
+remnux.packages.pycdc
+remnux.packages.powershell
+remnux.packages.portex
+remnux.packages.msoffice-crypt
+remnux.packages.flare-floss
+remnux.packages.binee
+remnux.packages.xorsearch
+remnux.packages.android-project-creator
+remnux.packages.sandfly-processdecloak
+remnux.packages.ilspy
+remnux.packages.ghidra
+remnux.packages.scdbg
+remnux.packages.evilclippy
+remnux.packages.rar
+remnux.packages.burpsuite-community
+remnux.tools.jd-gui
+remnux.packages.playwright
+
+# ---- SALT-MOD group: state module not available in Salt 3008.2 ----
+remnux.rubygems.origamindee              # uses gem.removed/gem.installed
+remnux.rubygems.pdnstool                 # uses gem.installed
+remnux.rubygems.pedump                   # uses gem.installed
+
+# ---- npm group with no explicit error message (likely missing npm or a silent failure) ----
+remnux.node-packages.box-js
+remnux.node-packages.js-deobfuscator
+remnux.node-packages.jstillery
+remnux.node-packages.webcrack
+remnux.node-packages.opencode
+
+# ---- nodejs.pkg.installed returned Failed on the full run: cause still unconfirmed ----
+# NOTE: excluding this could break everything that depends on nodejs (node-packages in general).
+# Deliberately left OUT of the exclusion so it shows up clearly in the next log
+# and the real cause can be investigated before deciding whether to exclude it.
+# remnux.packages.nodejs                 # [UNCLASSIFIED] investigate before excluding
