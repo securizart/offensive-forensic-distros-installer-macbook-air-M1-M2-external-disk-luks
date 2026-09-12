@@ -1,18 +1,37 @@
 # Offensive & Forensic Distros Installer for MacBook Air M1/M2 (external disk, LUKS) — internal codename `base_inst_kali`
 
-A menu-driven installer with support for
-**several offensive operating systems** (Kali Linux, Parrot Security
-OS, and Ubuntu) on an external USB disk with encrypted partitions,
-cloned from a **Debian/Asahi** (or **Ubuntu/Asahi**, depending on the
-target) base already installed on an Apple Silicon MacBook Air/Pro
-(M1/M2). `/boot` (EFI + kernel) stays on the Mac's internal disk; the
-root filesystem lives on the external disk.
+A menu-driven installer with support for **several offensive operating
+systems** (Kali Linux, Parrot Security OS) **and forensic toolkits**
+(SIFT Workstation, REMnux, offered as options under Ubuntu) on an
+external USB disk with encrypted partitions, cloned from a
+**Debian/Asahi** (for Kali/Parrot) or **Ubuntu/Asahi** (for Ubuntu, and
+whichever forensic tools you add on top) base already installed on an
+Apple Silicon MacBook Air/Pro (M1/M2). `/boot` (EFI + kernel) stays on
+the Mac's internal disk; the root filesystem lives on the external
+disk.
 
 ```
-Debian/Asahi (internal NVMe, already installed) ──clones──▶ external USB disk
-                                                              ├── Kali Linux (its own partitions)
-                                                              └── Parrot Security OS (its own partitions)
+Debian/Asahi (internal NVMe) ──clones──▶ external USB disk
+                                           ├── Kali Linux (its own partitions)
+                                           └── Parrot Security OS (its own partitions)
+
+Ubuntu/Asahi (internal NVMe) ──clones──▶ external USB disk
+                                           └── Ubuntu (its own partitions)
+                                                 ├── + SIFT Workstation (optional)
+                                                 └── + REMnux (optional)
 ```
+
+Both bases are separate, non-converting internal installs — see
+["Non-negotiable prerequisite"](#non-negotiable-prerequisite-before-using-this)
+below if you want both offensive distros and forensic tools on the same
+external disk.
+
+> **CAINE was evaluated and deliberately not implemented**: it ships as
+> a modified Live ISO, not as an APT repository that can be added on top
+> of an already-cloned base, so it doesn't fit this installer's
+> conversion/Salt-states model the way Kali, Parrot, SIFT and REMnux do.
+> See [docs/OPERATING_SYSTEMS.md](docs/OPERATING_SYSTEMS.md) for the
+> full reasoning.
 
 > ⚠️ **Project status:** actively in development. The scripts are
 > functional but not yet meant for "blind" use. Read the risks section
@@ -75,8 +94,9 @@ trial-and-error:
   penetration-testing distribution bootable from the GRUB menu
   alongside the original system. **Ubuntu**, on the other hand, is
   cloned as-is (no conversion), with the option to add **SIFT
-  Workstation (SANS)** on top for forensics.
-- Lets you install **more than one offensive system on the same
+  Workstation (SANS)** and/or **REMnux** on top, for forensics and
+  malware analysis respectively.
+- Lets you install **more than one operating system on the same
   external disk**, each in its own partitions, without overwriting each
   other's data.
 - All of it guided by a **single menu** (`install.sh`) with persistent
@@ -205,6 +225,14 @@ doesn't need to change.
 | MacBook Pro M1 | To be tested |
 | MacBook Pro M2 | To be tested |
 
+This table tracks the **Kali/Parrot conversion path specifically**,
+which has the longest track record on real hardware. Ubuntu, SIFT and
+REMnux are functional (see the video demo below and
+`forensics/remnux/FINDINGS.md` for REMnux's VM-based validation
+details) but don't yet have the same volume of confirmed real-hardware
+runs — treat them as less battle-tested until this table says
+otherwise.
+
 Update this table as confirmed via the repository's `Issues`.
 
 > If the firmware/u-boot doesn't detect the external disk at boot, see
@@ -285,6 +313,14 @@ authorization from the owner. Using these tools against third-party
 systems without authorization may be illegal depending on jurisdiction;
 the author is not responsible for any misuse of the tools installed
 through this project.
+
+The optional forensic/malware-analysis toolkits (SIFT Workstation,
+REMnux) are generally not offensive tools in themselves — they're built
+for investigating and analyzing systems, disk images and malware
+samples you already have lawful access to — but the same principle
+applies: only use them on data and systems you're authorized to examine
+(your own, your organization's, or under a proper chain of custody for
+an investigation).
 
 ## License
 

@@ -1,0 +1,12 @@
+# Personal configuration (don't commit your machine's data)
+config.sh
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Editor
+.vscode/
+.idea/
