@@ -21,7 +21,13 @@
   them, so you switch by rebooting and picking the corresponding
   internal boot entry before cloning toward each target. Host steps
   00/01/01a need to be repeated once per base the first time you use it
-  (see [docs/OPERATING_SYSTEMS.md](OPERATING_SYSTEMS.md)).
+  (see [docs/OPERATING_SYSTEMS.md](OPERATING_SYSTEMS.md)). Plan **at
+  least 90 GB combined** on the internal disk for both bases (60 GB
+  Ubuntu Desktop 24.04 + 30 GB minimal Debian).
+- **The Ubuntu/Asahi stable installer may not currently offer Ubuntu
+  24.04 LTS** — see
+  [docs/OPERATING_SYSTEMS.md](OPERATING_SYSTEMS.md#installing-the-ubuntuasahi-source-base-with-ubuntu-2404-lts)
+  for the beta-channel workaround this project's videos use.
 - **Check for yourself that this Debian/Asahi base is compatible with
   the version of Kali or Parrot you're about to install** before
   reaching steps 08-09 (repositories and metapackages). This installer

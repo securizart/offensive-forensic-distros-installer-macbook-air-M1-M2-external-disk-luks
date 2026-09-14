@@ -47,7 +47,10 @@ repository:
 - **Asahi Linux / Debian** — to clone toward **Kali** or **Parrot**
   (converted by adding their repository on top of this base).
 - **Ubuntu Asahi** — to clone toward **Ubuntu** (cloned as-is, no
-  conversion; see [ubuntuasahi.org](https://ubuntuasahi.org/)).
+  conversion; see [ubuntuasahi.org](https://ubuntuasahi.org/)). The
+  stable installer may not currently offer **Ubuntu 24.04 LTS** — see
+  [docs/OPERATING_SYSTEMS.md](docs/OPERATING_SYSTEMS.md#installing-the-ubuntuasahi-source-base-with-ubuntu-2404-lts)
+  for the workaround.
 
 This project **does not install macOS or any of these bases**: it
 assumes they already exist and work, and clones whichever one matches
@@ -247,6 +250,22 @@ Update this table as confirmed via the repository's `Issues`.
 
 The video also shows the installation and use of **Ubuntu** on top of
 this same base, as a proof of concept — see the roadmap below.
+
+## Step-by-step video walkthroughs
+
+Companion series on YouTube covering the base Asahi installs and each
+conversion path from scratch, hardware-recorded on MacBook Air M1/M2.
+Links are added as each video is published.
+
+| # | Video | Link |
+|---|---|---|
+| 1 | Preparing internal disk partitions (90 GB: 60 GB Ubuntu Desktop 24.04 + 30 GB Debian minimal) | [Watch](https://youtu.be/i-P85ajE-7I) |
+| 2 | Installing Debian/Asahi | [Watch](https://youtu.be/aOQpekan4mk) |
+| 3 | Installing Ubuntu/Asahi | [Watch](https://youtu.be/ZerajpZtm0I) |
+| 4 | Preparing and converting to Kali | _pending_ |
+| 5 | Preparing and converting to Parrot | _pending_ |
+| 6 | Preparing and converting to SIFT | _pending_ |
+| 7 | Preparing and converting to REMnux | _pending_ |
 
 ## Roadmap
 

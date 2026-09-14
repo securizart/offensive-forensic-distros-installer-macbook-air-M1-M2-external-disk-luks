@@ -3,7 +3,29 @@
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 All dates in YYYY-MM-DD.
 
-## [Unreleased]
+## [1.1.0] — Ubuntu/Asahi 24.04 source-base workaround
+### Added
+- **Documented workaround for installing the Ubuntu/Asahi source base
+  on Ubuntu 24.04 LTS**: the stable installer published on
+  `ubuntuasahi.org` resolves its installable-release list from a JSON
+  file that, as of this writing, doesn't list 24.04 LTS. Tracing the
+  installer's own source turned up the maintainer's **beta** channel,
+  whose release JSON does include 24.04 LTS (`curl -sL
+  https://files3.tobhe.de/ubuntu/install-beta | sh`). Documented in
+  `docs/OPERATING_SYSTEMS.md`, with the usual `curl | sh` caution
+  (inspect before piping to `sh`) and a note that it only affects how
+  the source base itself is installed — nothing in `lib/os_catalog.sh`
+  or `steps/*.sh` changes.
+- **Internal disk partitioning guidance for both source bases**: 90 GB
+  combined (60 GB Ubuntu Desktop 24.04 + 30 GB minimal Debian),
+  validated on real MacBook Air M1/M2 hardware. Added to
+  `docs/OPERATING_SYSTEMS.md` and referenced from `docs/USAGE.md`.
+- **README "Step-by-step video walkthroughs" table**: new first entry
+  covering internal disk partition preparation, ahead of the Debian/
+  Asahi and Ubuntu/Asahi install videos and the four conversion videos
+  (Kali, Parrot, SIFT, REMnux).
+
+## [1.0.0] - 2026-09-13
 ### Changed
 - **Project renamed and moved to its definitive repository**:
   `offensive-forensic-distros-installer-macbook-air-M1-M2-external-disk-luks`,

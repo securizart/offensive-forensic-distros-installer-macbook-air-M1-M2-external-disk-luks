@@ -16,7 +16,116 @@ Debian/Asahi base, adding their repository and signing key on top
 already Ubuntu), so it's **cloned as-is** from a genuine, separate
 **Ubuntu/Asahi** installation on the internal disk (see
 [Ubuntu Asahi](https://ubuntuasahi.org/), the community project that
-natively installs Ubuntu Desktop 24.04/24.10 on Apple Silicon).
+natively installs Ubuntu on Apple Silicon). See below for a caveat on
+which Ubuntu version the *stable* installer actually offers.
+
+### Installing the Ubuntu/Asahi source base with Ubuntu 24.04 LTS
+
+The install one-liner published on
+[ubuntuasahi.org](https://ubuntuasahi.org/) resolves its list of
+installable releases from a JSON file the stable installer downloads at
+run time. As of this writing, that stable channel's JSON does **not**
+list Ubuntu 24.04 LTS (Noble) as an installable option, even though it's
+the version this project's Ubuntu/SIFT documentation assumes throughout.
+
+Tracing the installer's own source (the script fetches its installer
+tarball and a `REPO_BASE` from the Ubuntu/Asahi maintainer's own file
+host) turned up a **beta** channel whose release JSON does include
+24.04 LTS:
+
+```sh
+curl -sL https://files3.tobhe.de/ubuntu/install-beta | sh
+```
+
+Notes on this before running it on real hardware:
+
+- This is an **unofficial/beta distribution channel**, not the command
+  published on ubuntuasahi.org — it can change or disappear without
+  notice, and isn't covered by the project's usual support.
+- As with any `curl | sh`, inspect the script first instead of piping
+  it blind — e.g. `curl -sL https://files3.tobhe.de/ubuntu/install-beta
+  | less` — before deciding to run it.
+- It only replaces how you install the **source base** on the internal
+  disk. Once Ubuntu 24.04 is up and booted, this repository's own
+  steps (00 onward) work exactly as documented; nothing in
+  `lib/os_catalog.sh` or `steps/*.sh` changes.
+
+**Procedure**, shown in video 2 of the
+[step-by-step walkthroughs](../README.md#step-by-step-video-walkthroughs)
+(run after [partitioning the internal disk](#partitioning-the-internal-disk-for-both-source-bases)
+in video 1):
+
+1. Run the beta installer command above from macOS Terminal.
+2. When prompted for how much of the free space to use, select
+   **60 GB** for this install, leaving the remaining **30 GB** free for
+   the Debian/Asahi base installed afterward (video 3).
+3. From the list of available releases, pick **option #6, Ubuntu
+   Desktop 24.04 LTS**, using the maximum space offered for the
+   install (the 60 GB reserved in the previous step).
+4. Reboot the Mac holding the **power button** to reach the boot
+   picker, and select **Ubuntu**.
+5. Follow Ubuntu's own on-screen installation instructions, then
+   reboot when it finishes.
+6. Complete Ubuntu's first-run setup, creating the first (personal)
+   user however you prefer.
+7. Afterward, create a second, **administrator** account named
+   `remnux` (used later for the forensic-tooling side of this
+   project).
+8. Reboot once more and confirm both accounts appear on the login
+   screen.
+
+> The account name `remnux` matches the forensic-tooling target this
+> project documents in [forensics/README.md](../forensics/README.md);
+> its password is set during the walkthrough for demo purposes only —
+> since this repo and its docs are public, treat any credential
+> mentioned here as compromised by publication and change it (or use a
+> throwaway one) on any build that isn't a disposable lab machine.
+
+### Partitioning the internal disk for both source bases
+
+When preparing the internal disk to host **both** source bases this
+project needs (Debian/Asahi for Kali/Parrot, Ubuntu/Asahi for
+Ubuntu/SIFT/REMnux — see [docs/USAGE.md](USAGE.md)), reserve at least
+**90 GB** combined for the two:
+
+- **60 GB** for Ubuntu Desktop 24.04.
+- **30 GB** for a minimal Debian install.
+
+These are the sizes validated on real MacBook Air M1/M2 hardware for
+this project; adjust upward if you plan to keep large local caches
+(APT/pip package caches, VM images, etc.) on either base.
+
+**Procedure (macOS, before running either the Ubuntu/Asahi or
+Debian/Asahi installer)**, shown in video 1 of the
+[step-by-step walkthroughs](../README.md#step-by-step-video-walkthroughs):
+
+1. In **Disk Utility**, create a new **90 GB** partition on the
+   internal disk, formatted as **ExFAT**. ExFAT is used here only as a
+   throwaway format — Disk Utility's partition-creation dialog needs a
+   filesystem to create the partition with in the first place; the
+   next steps turn it into unformatted free space.
+2. In **Terminal**, list the disks and identify the partition just
+   created (note its `diskXsY` identifier — double-check it's the
+   partition you just made on the **internal** disk, not the external
+   one this project targets later):
+   ```sh
+   diskutil list
+   ```
+3. Unmount it:
+   ```sh
+   diskutil unmount disk#s#
+   ```
+4. Erase it down to unformatted free space, so the native Ubuntu/Asahi
+   and Debian/Asahi installers can each claim their share of it during
+   their own partitioning step (60 GB for Ubuntu in video 2, 30 GB for
+   Debian in video 3):
+   ```sh
+   diskutil eraseVolume "Free Space" "%noformat%" disk#s#
+   ```
+
+`disk#s#` is whatever identifier `diskutil list` reported for that
+partition in step 2 (e.g. `disk0s5`) — replace it accordingly, it isn't
+a literal placeholder to leave as-is.
 
 ### Source base verification and automatic menu filtering
 
