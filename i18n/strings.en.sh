@@ -153,7 +153,7 @@ STRINGS[step07_intro]="We'll combine the boot entries from the internal grub.cfg
 STRINGS[step07_backup_orig]="Backup of the original grub.cfg saved at %s"
 STRINGS[step07_merging]="Merging boot entries..."
 STRINGS[step07_done]="grub.cfg updated. Reboot and pick the corresponding entry from the GRUB menu."
-STRINGS[step07_reboot_notice]="IMPORTANT: at this point BOTH entries in the GRUB menu are still labeled \"Debian GNU/Linux\" (the conversion to the real OS happens in step 08, not before) — pick the SECOND one, the one just merged in from the external disk, not the host's own entry."
+STRINGS[step07_reboot_notice]="IMPORTANT: %s's entry in the GRUB menu is still labeled \"Debian GNU/Linux\" (the conversion to the real OS happens in step 08, not before) — pick the LAST entry in the list (this step always merges the active OS's entry in last), not the host's own entry or any other OS you'd already set up."
 
 # --- step 08: repositories (per OS) --------------------------------------------
 STRINGS[step08_title_short]="08 · Add repositories"

@@ -278,7 +278,7 @@ Links are added as each video is published.
 | 2 | Installing Debian/Asahi | [Watch](https://youtu.be/aOQpekan4mk) |
 | 3 | Installing Ubuntu/Asahi | [Watch](https://youtu.be/ZerajpZtm0I) |
 | 4 | Preparing and converting to Kali | [Watch](https://youtu.be/scGwTnxU-Hc) |
-| 5 | Preparing and converting to Parrot | _pending_ |
+| 5 | Preparing and converting to Parrot | [Watch](https://youtu.be/wb82dBMkrwI) |
 | 6 | Preparing and converting to SIFT | _pending_ |
 | 7 | Preparing and converting to REMnux | _pending_ |
 

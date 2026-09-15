@@ -3,6 +3,54 @@
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 All dates in YYYY-MM-DD.
 
+## [1.3.0] — Parrot codename, desktop, and multi-OS GRUB merge
+### Fixed
+- **`steps/08_repositories.sh`/`steps/09_package_installation.sh` —
+  `404 Not Found` on `deb.parrot.sh` for Parrot's repositories**: Parrot
+  renamed its stable/rolling suite from the old `lts` codename to
+  `echo` (Parrot OS 7.x, aligned with Debian "trixie", confirmed via
+  ParrotSec's own mirrors documentation). Updated `sources.list`,
+  `preferences.d/parrot.pref`, and every `-t lts` flag to `-t echo`.
+  `echo-security` now points at `deb.parrot.sh/direct/parrot` per
+  upstream's own recommendation, instead of a regular mirror.
+- **`steps/09_package_installation.sh` — Parrot booted with no
+  graphical desktop**: `parrot-core` and `parrot-tools-full` never
+  pulled in a desktop environment — Parrot ships that separately as
+  `parrot-interface` (which depends on one of
+  `parrot-desktop-kde`/`-mate`/`-xfce`/... as apt alternatives). Since
+  Parrot OS 7.0 the default DE is KDE Plasma (it was MATE up to 6.x),
+  so `parrot-desktop-kde` and `parrot-interface` are now installed
+  explicitly for the `parrot` target, pinning that alternative instead
+  of leaving it to apt's dependency resolution.
+- **`steps/07_grub_merge.sh` — a previous OS's native GRUB entry
+  silently disappears when a THIRD operating system is added**: every
+  OS's root partition lives inside its own LUKS container, but
+  `os-prober` needs to mount an OS's root filesystem to identify it —
+  it can't look inside one that's closed. Relying on `os-prober` to
+  recover a previously-merged entry (as this step used to) only ever
+  worked for the single most recently processed OS; adding a third one
+  silently dropped whichever entry wasn't currently open. This step now
+  loops over every OS in `OS_LIST` and merges each one's own
+  `10_linux` GRUB fragment explicitly, mounting only that OS's
+  (unencrypted) boot partition to read it — no LUKS passphrase needed,
+  since `grub.cfg` lives on `boot`, not on the encrypted root.
+  `STRINGS[step07_reboot_notice]` updated accordingly: it used to say
+  "pick the second entry", which stops being correct once there are
+  more than two operating systems in the merged menu; it now names the
+  OS being processed and says to pick the LAST entry instead, since
+  this step always merges the active OS in last.
+### Added
+- **`steps/07_grub_merge.sh` — step 06's progress no longer shows as
+  permanently "pending" in the menu**: step 06 runs inside the chroot,
+  where `STATE_DIR` resolves to the *external disk's own* filesystem,
+  not the host's, so its "done" mark never reached the host's
+  `state.conf` that the menu reads from (`NO_GATE_STEPS=("06")` in
+  `install.sh` already accounted for this not blocking progress, but
+  the display itself stayed wrong). Step 07 now reads that mark back
+  from the disk's own copy of `state.conf` — still mounted at this
+  point — and propagates it to the host, purely cosmetic, no behavior
+  change.
+
 ## [1.2.0] — Project logo
 ### Added
 - **Project logo** (`assets/logo.jpeg`), embedded at the top of

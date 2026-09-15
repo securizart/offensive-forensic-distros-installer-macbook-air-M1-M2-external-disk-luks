@@ -125,15 +125,24 @@ case "$TARGET_OS" in
         mkdir -p /etc/apt/keyrings
         run_cmd "parrot key" bash -c 'wget -q -O - https://deb.parrot.sh/parrot/misc/parrotsec.gpg | gpg --dearmor -o /etc/apt/keyrings/parrot.gpg'
 
+        # NOTE (2026-09-15, v1.3.0): Parrot renamed its stable/rolling
+        # suite from the old "lts" codename to "echo" (Parrot OS 7.x,
+        # aligned with Debian "trixie", which is the base this system
+        # was cloned from) -- confirmed via parrotsec.org's own mirrors
+        # documentation. The old "lts"/"lts-updates"/"lts-security"
+        # suites now 404 on deb.parrot.sh. If Parrot renames the suite
+        # again in a future release, update the codename here (and the
+        # matching -t flags below, plus steps/09_package_installation.sh)
+        # accordingly.
         echo "$(t step08_adding_repos)"
         cat > /etc/apt/sources.list.d/parrot.list <<'EOF'
-deb [signed-by=/etc/apt/keyrings/parrot.gpg] https://deb.parrot.sh/parrot lts main contrib non-free
-deb [signed-by=/etc/apt/keyrings/parrot.gpg] https://deb.parrot.sh/parrot lts-updates main contrib non-free
-deb [signed-by=/etc/apt/keyrings/parrot.gpg] https://deb.parrot.sh/parrot lts-security main contrib non-free
+deb [signed-by=/etc/apt/keyrings/parrot.gpg] https://deb.parrot.sh/parrot echo main contrib non-free non-free-firmware
+deb [signed-by=/etc/apt/keyrings/parrot.gpg] https://deb.parrot.sh/parrot echo-backports main contrib non-free non-free-firmware
+deb [signed-by=/etc/apt/keyrings/parrot.gpg] https://deb.parrot.sh/direct/parrot echo-security main contrib non-free non-free-firmware
 EOF
         {
             echo 'Package: *'
-            echo 'Pin: release a=lts'
+            echo 'Pin: release a=echo'
             echo 'Pin-Priority: 50'
         } > /etc/apt/preferences.d/parrot.pref
 
@@ -144,7 +153,7 @@ EOF
             -o Dpkg::Options::="--force-overwrite" \
             -o Dir::Etc::Preferences=/dev/null \
             -o Dir::Etc::PreferencesParts=/dev/null || true
-        run_cmd "dist-upgrade parrot" apt dist-upgrade -y -t lts -o Dpkg::Options::="--force-overwrite"
+        run_cmd "dist-upgrade parrot" apt dist-upgrade -y -t echo -o Dpkg::Options::="--force-overwrite"
         echo
         echo "$(t step08_parrot_arm_notice)"
         ;;

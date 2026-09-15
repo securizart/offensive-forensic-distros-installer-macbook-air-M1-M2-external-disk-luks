@@ -98,9 +98,21 @@ case "$TARGET_OS" in
         # cases aren't even installable on — a MacBook Air M1/M2.
         ;;
     parrot)
-        echo "$(t step09_installing "parrot-core, parrot-tools-full")"
-        run_cmd "parrot-core" apt-get install -y parrot-core -t lts
-        run_cmd "parrot-tools-full" apt-get install -y parrot-tools-full -t lts
+        # NOTE (2026-09-15, v1.3.0): parrot-core and parrot-tools-full
+        # alone never pull in a desktop environment -- Parrot ships that
+        # separately as "parrot-interface" (which depends on one of
+        # parrot-desktop-kde/-mate/-xfce/... as apt alternatives).
+        # Confirmed with Parrot's own release notes: since Parrot OS 7.0
+        # "echo" the default DE is KDE Plasma 6 (it was MATE up to
+        # 6.x), so pin that alternative explicitly instead of leaving it
+        # to apt's dependency resolution. Also "lts" -> "echo", see
+        # steps/08_repositories.sh for the matching sources.list/pin
+        # change and the reasoning.
+        echo "$(t step09_installing "parrot-core, parrot-desktop-kde, parrot-interface, parrot-tools-full")"
+        run_cmd "parrot-core" apt-get install -y parrot-core -t echo
+        run_cmd "parrot-desktop-kde" apt-get install -y parrot-desktop-kde -t echo
+        run_cmd "parrot-interface" apt-get install -y parrot-interface -t echo
+        run_cmd "parrot-tools-full" apt-get install -y parrot-tools-full -t echo
         ;;
     ubuntu)
         # 1) Desktop environment, idempotently: the Ubuntu Asahi image
