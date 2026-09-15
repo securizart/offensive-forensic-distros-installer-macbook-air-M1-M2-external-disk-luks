@@ -3,6 +3,160 @@
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 All dates in YYYY-MM-DD.
 
+## [1.2.0] — Project logo
+### Added
+- **Project logo** (`assets/logo.jpeg`), embedded at the top of
+  `README.md`.
+### Changed
+- **README title**: dropped the `— internal codename \`base_inst_kali\``
+  suffix. The codename is still documented inline where it's actually
+  relevant (state directory, support-file paths, chroot copy target).
+- **`docs/USAGE.md` / `README.md` — made explicit where/how to get the
+  installer onto the machine**: added a basic checklist at the top of
+  "Before you start" (boot into the matching Asahi base on the
+  internal disk → copy the installer into a folder there → run it as
+  root from that folder) and clarified in "Getting started"/"Starting
+  the installer" that this all happens on the booted Asahi base
+  itself, not on macOS or another machine. Also corrected the initial
+  copy method to **USB drive** instead of `git clone`: a fresh Asahi
+  base has no `git` installed and no network yet (until step 01a
+  runs), so `git clone` isn't actually usable for getting the
+  installer onto the machine the first time.
+- **README — video 4 link added** (Kali conversion) and **disk-size
+  guidance**: documented the ≈89.5 GB per-OS minimum on the external
+  disk (from `steps/02_partitions.sh`'s 512 MB + 2 GB + 87 GB) and
+  recommended at least a 500 GB external disk when installing more
+  than one operating system on it, in `README.md` and
+  `docs/USAGE.md`.
+### Fixed
+- **`steps/01a_network.sh` — wpa_supplicant.conf missing directives on
+  Debian Trixie**: `wpa_passphrase` never emits `scan_ssid`/`key_mgmt`
+  (confirmed on Trixie's wpasupplicant, though this is inherent to the
+  tool everywhere, not version-specific); now inserted explicitly so
+  hidden-SSID networks still connect.
+- **`steps/01a_network.sh` — no interface actually brought up**: writing
+  `wpa_supplicant.conf` alone did nothing on this ifupdown-based base
+  (no NetworkManager). Now auto-detects the wireless interface (via
+  `/sys/class/net/*/wireless`) and writes the matching
+  `/etc/network/interfaces.d/<iface>` stanza, adding
+  `source /etc/network/interfaces.d/*` to `/etc/network/interfaces` if
+  missing. Bring-up now retries up to 5 times (5s apart), checking for
+  an actual IPv4 address rather than trusting `ifup`'s exit code alone,
+  and never aborts the main install flow if it can't confirm a
+  connection.
+- **Host step order**: `HOST_STEPS` in `install.sh` now runs
+  `00 → 01a → 01` (was `00 → 01 → 01a`) — step 01 needs network for its
+  own `apt update`/`apt install`. Updated the walkthrough numbering in
+  `docs/USAGE.md` and the step table in `docs/ARCHITECTURE.md` to
+  match. Added a warning in `steps/01a_network.sh` that the console
+  keyboard layout is still the base image's default (normally US
+  English) at this point, since keyboard/locale setup (step 01) hasn't
+  run yet.
+- **`steps/01_preparation.sh`**: replaced the deprecated `ntpdate`
+  package with `ntpsec-ntpdate`.
+- **`steps/05_chroot_prep.sh`**: added a 5s pause after `cryptsetup
+  open` and before mounting, to let udev/LVM finish enumerating the
+  volume group inside the just-opened LUKS container.
+- **`steps/08_repositories.sh` — `apt-key: command not found` on Debian
+  Trixie**: `apt-key` was fully removed in Debian 13 "Trixie" (deprecated
+  since Debian 11/12). Kali's signing key now uses the same
+  `gpg --dearmor` + `signed-by=` pattern already used for Parrot,
+  instead of `apt-key add`.
+- **`steps/07_grub_merge.sh` — duplicated `### END
+  /etc/grub.d/30_os-prober ###` marker in the merged `grub.cfg`**:
+  off-by-one in the final `sed` range (started at `c1` instead of
+  `c1+1`), re-copying a line already included by the first `sed` call.
+  Harmless to GRUB itself (a duplicated comment), but left the file
+  structurally wrong.
+- **`steps/08_repositories.sh` — stale "Debian GNU/Linux" boot menu
+  title after conversion**: added `update-grub` at the end of the step
+  (Kali/Parrot only) so this disk's own `grub.cfg` picks up the real
+  distro name from `/etc/os-release` once `dist-upgrade` has replaced
+  `base-files`. Note this only fixes this disk's own copy — re-run step
+  07 from the host afterward to refresh the merged entry there too.
+- **`steps/04_cloning.sh` — UUID resolution for fstab/crypttab**:
+  switched from parsing default-format `blkid` output with a regex to
+  `blkid -o export` (the `KEY=value`, unquoted format util-linux itself
+  recommends for scripting), more robust across util-linux versions.
+- **`steps/08_repositories.sh` — `dpkg: trying to overwrite '/usr/bin/rev',
+  which is also in package util-linux` during Kali's `dist-upgrade`**:
+  package-file moves between the Debian trixie and kali-rolling
+  generations (`rev` moved from `util-linux` to `bsdextrautils`, per
+  util-linux's own changelog) can trip dpkg's overwrite-conflict check
+  on a jump this big. Added `-o Dpkg::Options::="--force-overwrite"` to
+  the `dist-upgrade`/`--fix-broken install` calls for both Kali and
+  Parrot — the standard, documented way through this class of
+  cross-repo file-conflict.
+- **`steps/08_repositories.sh` — `pkgProblemResolver::Resolve generated
+  breaks` when repairing after the above**: `apt --fix-broken install`
+  had no way to reach the kali-rolling/lts package versions needed to
+  resolve the break, since `kali.pref`/`parrot.pref` pin those repos at
+  priority 50 precisely so apt won't touch them without being asked.
+  Tried `-t kali-rolling` first, but that can itself fail ("no es
+  válido para APT::Default-Release") if the release/index state is
+  stale mid-repair; switched to disabling preferences entirely for that
+  one call (`-o Dir::Etc::Preferences=/dev/null -o
+  Dir::Etc::PreferencesParts=/dev/null`) instead.
+- **`steps/08_repositories.sh` — Kali's `dist-upgrade` removing
+  `grub-efi-arm64`/`grub-efi-arm64-bin` in favor of `systemd-boot`**:
+  kali-rolling's arm64 packaging can pull in `systemd-boot`/
+  `shim-signed` and drop GRUB as part of a big `dist-upgrade`.
+  `systemd-boot`'s own boot-entry creation then failed to configure on
+  this Asahi/EFI setup, leaving `dpkg` broken either way, and this
+  project's boot chain is entirely GRUB-based (steps 05-07 hand-build
+  the merged `grub.cfg`). Added `/etc/apt/preferences.d/
+  no-systemd-boot.pref` (`Pin-Priority: -1` for `systemd-boot*`,
+  `shim-signed*`, `shim-unsigned`) before the `dist-upgrade` call so
+  apt's solver can't pull them in or remove GRUB to begin with.
+- **`steps/08_repositories.sh` — hibernate/resume warning during
+  `update-initramfs`**: the swap volume on this external/clonable disk
+  has no stable UUID/device-numbering guarantee across disks, and this
+  project has no hibernate use case. Set `RESUME=none` explicitly in
+  `/etc/initramfs-tools/conf.d/resume` at the start of the step (before
+  any `apt update`/`dist-upgrade` triggers a rebuild), instead of
+  leaving it to auto-detection.
+- **`steps/08_repositories.sh` — cloned WiFi config pointed at the wrong
+  interface name**: `wpa_supplicant.conf`/`interfaces.d` are cloned from
+  the host in step 04 with the HOST kernel's interface name (e.g.
+  `wlan0` on Debian/Asahi); the target OS's own kernel can name the
+  same physical adapter differently (observed: `wld0` on Kali),
+  intermittent connectivity followed (likely from some other fallback,
+  not the stale config). Step 08 now re-detects the wireless interface
+  on ITS OWN kernel first and rewrites the `interfaces.d` stanza under
+  the current name before any `apt` operation.
+- **`steps/09_package_installation.sh` — `kali-linux-arm` unsatisfiable
+  dependencies**: that metapackage is Kali's own bundle for their ARM
+  SBC images (Raspberry Pi, Rockchip, Allwinner boards), depending on
+  SBC-specific firmware/tools (`rkflashtool`, `sunxi-tools`,
+  `dphys-swapfile`, `firmware-realtek`, etc.) that don't apply to — and
+  in several cases aren't installable on — a MacBook Air M1/M2. Removed
+  from the metapackage install list; `kali-linux-default`,
+  `kali-desktop-gnome` and `kali-linux-large` are unaffected and cover
+  everything this project actually needs.
+- **`steps/09_package_installation.sh` — WiFi interface name drifting
+  between boots**: on top of the host→clone naming mismatch from step
+  08 (see above), this same adapter's kernel-assigned name has been
+  observed to change again between reboots on this hardware alone
+  (`wld0` vs `wlp1s0f0` for the SAME physical MAC), so whatever step 08
+  detected before its own reboot can already be stale by the time this
+  step runs. Added a fresh re-detection at the start of step 09 that
+  also drops any orphaned `interfaces.d` stanza left under a previous
+  name, and pins the adapter's MAC to a fixed `wlan0` via a udev rule
+  so future boots stop drifting.
+- **`steps/07_grub_merge.sh` — reboot instructions were too vague**:
+  both GRUB entries are still labeled "Debian GNU/Linux" at this point
+  (conversion happens in step 08, not before), so "pick the
+  corresponding entry" left room for picking the wrong one. Added an
+  explicit notice to pick the SECOND entry, and step 07 now reboots
+  automatically after a 5s pause (matching step 08's pattern) instead
+  of ending and leaving the reboot to the user.
+- **`steps/04_cloning.sh` and `steps/07_grub_merge.sh` — step wrongly
+  shown as still pending after booting from the cloned disk**:
+  `sync_state_to_mount` (which copies progress onto the external disk
+  for the installer to pick up once booted from there) ran BEFORE
+  `mark_os_step_done`, so the copy it left out was always missing that
+  same step's own completion. Swapped the order in both steps.
+
 ## [1.1.0] — Ubuntu/Asahi 24.04 source-base workaround
 ### Added
 - **Documented workaround for installing the Ubuntu/Asahi source base

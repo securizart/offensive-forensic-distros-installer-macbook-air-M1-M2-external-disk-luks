@@ -1,4 +1,8 @@
-# Offensive & Forensic Distros Installer for MacBook Air M1/M2 (external disk, LUKS) — internal codename `base_inst_kali`
+<p align="center">
+  <img src="assets/logo.jpeg" alt="Offensive & Forensic Distros Installer logo" width="240">
+</p>
+
+# Offensive & Forensic Distros Installer for MacBook Air M1/M2 (external disk, LUKS)
 
 A menu-driven installer with support for **several offensive operating
 systems** (Kali Linux, Parrot Security OS) **and forensic toolkits**
@@ -64,6 +68,9 @@ target requires (see
 > **both bases installed on the internal disk**: Debian/Asahi for
 > Kali/Parrot, and Ubuntu/Asahi for the Ubuntu target (which is where
 > SIFT and REMnux hang off, see [docs/OPERATING_SYSTEMS.md](docs/OPERATING_SYSTEMS.md)).
+> Each OS takes ≈89.5 GB on the external disk (512 MB EFI + 2 GB boot +
+> 87 GB root) — **for more than one operating system on the same disk,
+> use at least a 500 GB external disk**, not the bare minimum.
 > Neither base can be converted into the other after the fact — you
 > switch between them by rebooting the Mac and picking the corresponding
 > internal boot entry. Note that host steps 00/01/01a will need to be
@@ -150,8 +157,16 @@ trial-and-error:
 
 ## Getting started
 
+Run this from a terminal on the already-booted Asahi base itself
+(Debian/Asahi or Ubuntu/Asahi, on the **internal** disk — see
+Prerequisites above), not from macOS or any other machine. `git` isn't
+installed by default on a fresh Asahi base, and there's no network yet
+until step 01a runs, so get the installer onto the machine via **USB
+drive** first (download/clone this repo elsewhere, copy it to a USB
+drive, then copy it from there into a local folder on the booted
+Asahi base):
+
 ```bash
-git clone https://github.com/securizart/offensive-forensic-distros-installer-macbook-air-M1-M2-external-disk-luks.git
 cd offensive-forensic-distros-installer-macbook-air-M1-M2-external-disk-luks
 sudo bash install.sh
 ```
@@ -262,7 +277,7 @@ Links are added as each video is published.
 | 1 | Preparing internal disk partitions (90 GB: 60 GB Ubuntu Desktop 24.04 + 30 GB Debian minimal) | [Watch](https://youtu.be/i-P85ajE-7I) |
 | 2 | Installing Debian/Asahi | [Watch](https://youtu.be/aOQpekan4mk) |
 | 3 | Installing Ubuntu/Asahi | [Watch](https://youtu.be/ZerajpZtm0I) |
-| 4 | Preparing and converting to Kali | _pending_ |
+| 4 | Preparing and converting to Kali | [Watch](https://youtu.be/scGwTnxU-Hc) |
 | 5 | Preparing and converting to Parrot | _pending_ |
 | 6 | Preparing and converting to SIFT | _pending_ |
 | 7 | Preparing and converting to REMnux | _pending_ |

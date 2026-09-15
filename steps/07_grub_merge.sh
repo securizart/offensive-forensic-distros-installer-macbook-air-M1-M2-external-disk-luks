@@ -64,18 +64,25 @@ log_info "Markers ($TARGET_OS): a1=$a1 b1=$b1 c1=$c1 d1=$d1 a2=$a2 b2=$b2"
 MERGED="$(mktemp)"
 sed -n "1,${c1}p" /boot/grub/grub.cfg > "$MERGED"
 sed -n "${a2},${b2}p" "${MNT}/boot/grub/grub.cfg" >> "$MERGED"
-sed -n "${c1},${d1}p" /boot/grub/grub.cfg >> "$MERGED"
+sed -n "$((c1+1)),${d1}p" /boot/grub/grub.cfg >> "$MERGED"
 
 BACKUP="/boot/grub/grub.orig.$(date '+%Y%m%d_%H%M%S')"
 run_cmd "backup grub.cfg" cp /boot/grub/grub.cfg "$BACKUP"
 echo "$(t step07_backup_orig "$BACKUP")"
 mv "$MERGED" /boot/grub/grub.cfg
 
+mark_os_step_done "$TARGET_OS" "$STEP_ID"
+
 # The external disk is still mounted at $MNT at this point: take the
-# chance to leave the already-updated state there before the user
-# reboots and boots into the newly cloned install.
+# chance to leave the already-updated state there — AFTER marking this
+# step done, so the copy the newly-booted external system reads already
+# has step 07 recorded (previously synced before the mark, so it always
+# looked pending once booted from there).
 sync_state_to_mount "$MNT"
 
-mark_os_step_done "$TARGET_OS" "$STEP_ID"
 echo
 echo "$(t step07_done)"
+echo "$(t step07_reboot_notice)"
+echo "$(t generic_rebooting)"
+sleep 5
+reboot

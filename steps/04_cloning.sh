@@ -61,9 +61,16 @@ run_cmd "mount boot" mount "${TARGET_DISK}${PART_BOOT}" "${MNT}/boot"
 run_cmd "mount efi" mount "${TARGET_DISK}${PART_EFI}" "${MNT}/boot/efi"
 
 echo "$(t step04_fstab_crypttab)"
-a="$(blkid | grep "${TARGET_DISK}${PART_EFI}:" | grep -o -E ' UUID="[a-zA-Z0-9\-]*' | cut -c 8- || true)"
-b="$(blkid | grep "${TARGET_DISK}${PART_BOOT}:" | grep -o -E ' UUID="[a-zA-Z0-9\-]*' | cut -c 8- || true)"
-c="$(blkid | grep "${TARGET_DISK}${PART_ROOT}:" | grep -o -E ' UUID="[a-zA-Z0-9\-]*' | cut -c 8- || true)"
+# blkid -o export (KEY=value, unquoted) is the format util-linux itself
+# recommends for scripting, and is stable across versions (unlike the
+# default quoted "full" text format) — confirmed unchanged on Debian
+# Trixie's util-linux too, but this is more robust regardless.
+resolve_uuid() {
+    blkid -o export "$1" 2>/dev/null | sed -n 's/^UUID=//p'
+}
+a="$(resolve_uuid "${TARGET_DISK}${PART_EFI}")"
+b="$(resolve_uuid "${TARGET_DISK}${PART_BOOT}")"
+c="$(resolve_uuid "${TARGET_DISK}${PART_ROOT}")"
 
 if [ -z "$a" ] || [ -z "$b" ] || [ -z "$c" ]; then
     log_error "Could not resolve all the UUIDs for ${TARGET_DISK}${PART_EFI}/${PART_BOOT}/${PART_ROOT}."
@@ -79,11 +86,15 @@ EOF
 
 echo "${CRYPTNAME} UUID=$c  none luks,discard,x-initrd.attach" > "${MNT}/etc/crypttab"
 
+mark_os_step_done "$TARGET_OS" "$STEP_ID"
+
 # Also save progress on the cloned disk, so the installer remembers it
-# when it boots from there later on (see docs).
+# when it boots from there later on (see docs) — AFTER marking this
+# step done, so the copy already has step 04 recorded (previously
+# synced before the mark, so booting from the clone always showed step
+# 04 as still pending there).
 sync_state_to_mount "$MNT"
 
-mark_os_step_done "$TARGET_OS" "$STEP_ID"
 echo
 echo "$(t step04_done_reboot)"
 echo "$(t generic_rebooting)"

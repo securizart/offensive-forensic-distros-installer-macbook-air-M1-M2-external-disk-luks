@@ -25,7 +25,7 @@ echo "$(t step01_installing_packages)"
 run_cmd "apt update" apt update
 run_cmd "apt upgrade" apt upgrade -y
 run_cmd "apt install base packages" apt install -y \
-    initramfs-tools pciutils wpasupplicant tcpdump vim tmux vlan ntpdate \
+    initramfs-tools pciutils wpasupplicant tcpdump vim tmux vlan ntpsec-ntpdate \
     parted curl wget grub-efi-arm64 mtr-tiny dbus ca-certificates sudo \
     openssh-client mtools gdisk cryptsetup cryptsetup-initramfs lvm2 \
     os-prober rsync dosfstools gnupg1 gnupg2 locales keyboard-configuration \

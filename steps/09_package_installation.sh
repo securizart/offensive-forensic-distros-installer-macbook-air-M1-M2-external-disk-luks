@@ -22,13 +22,80 @@ echo "$(t step09_title "$(t "os_${TARGET_OS}_name")")"
 echo "$(t step09_intro "$(t "os_${TARGET_OS}_name")")"
 echo
 
+# --- WiFi interface: re-detect + pin to a stable name ----------------------
+# Step 08 ends with a reboot, and this adapter's kernel-assigned name has
+# been observed to CHANGE between boots on this hardware even without any
+# OS change (wld0 one boot, wlp1s0f0 the next, for the SAME physical MAC) —
+# so whatever step 08 detected can already be stale by the time this step
+# runs. Re-detect fresh, drop any interfaces.d stanza left over from a
+# different name, and pin this adapter's MAC to a fixed name via udev so
+# future boots stop drifting.
+WPA_CONF="/etc/wpa_supplicant/wpa_supplicant.conf"
+if [ -f "$WPA_CONF" ]; then
+    WIFI_IFACE=""
+    for ifc in /sys/class/net/*; do
+        if [ -d "${ifc}/wireless" ]; then
+            WIFI_IFACE="$(basename "$ifc")"
+            break
+        fi
+    done
+    if [ -n "$WIFI_IFACE" ]; then
+        WIFI_MAC="$(cat "/sys/class/net/${WIFI_IFACE}/address" 2>/dev/null || true)"
+        IFACES_D="/etc/network/interfaces.d"
+        mkdir -p "$IFACES_D"
+
+        # Drop any other interfaces.d file that points at this same
+        # wpa_supplicant.conf but under a DIFFERENT interface name — a
+        # leftover from a previous boot's naming, now orphaned.
+        for f in "$IFACES_D"/*; do
+            [ -f "$f" ] || continue
+            [ "$(basename "$f")" = "$WIFI_IFACE" ] && continue
+            if grep -qi "wpa-conf ${WPA_CONF}" "$f" 2>/dev/null; then
+                rm -f "$f"
+            fi
+        done
+
+        {
+            echo "auto ${WIFI_IFACE}"
+            echo "iface ${WIFI_IFACE} inet dhcp"
+            echo "    wpa-conf ${WPA_CONF}"
+        } > "${IFACES_D}/${WIFI_IFACE}"
+
+        IFACES_MAIN="/etc/network/interfaces"
+        if [ -f "$IFACES_MAIN" ] && ! grep -q "^source ${IFACES_D}/\*" "$IFACES_MAIN"; then
+            echo "source ${IFACES_D}/*" >> "$IFACES_MAIN"
+        fi
+
+        ifup "$WIFI_IFACE" 2>/dev/null || true
+        log_info "$(t step09_iface_redetected "$WIFI_IFACE")"
+        echo "$(t step09_iface_redetected "$WIFI_IFACE")"
+
+        # Pin this MAC to a fixed name (wlan0) so it stops drifting on
+        # future boots. Takes effect from the NEXT boot onward — we don't
+        # attempt a live rename here, that's riskier mid-setup than it's
+        # worth.
+        if [ -n "$WIFI_MAC" ] && [ "$WIFI_IFACE" != "wlan0" ]; then
+            mkdir -p /etc/udev/rules.d
+            echo "SUBSYSTEM==\"net\", ACTION==\"add\", ATTR{address}==\"${WIFI_MAC}\", NAME=\"wlan0\"" \
+                > /etc/udev/rules.d/70-persistent-wifi.rules
+            log_info "$(t step09_iface_pinned "$WIFI_MAC")"
+            echo "$(t step09_iface_pinned "$WIFI_MAC")"
+        fi
+    fi
+fi
+
 case "$TARGET_OS" in
     kali)
-        echo "$(t step09_installing "kali-linux-default, kali-desktop-gnome, kali-linux-large, kali-linux-arm")"
+        echo "$(t step09_installing "kali-linux-default, kali-desktop-gnome, kali-linux-large")"
         run_cmd "kali-linux-default" apt-get install -y kali-linux-default -t kali-rolling
         run_cmd "kali-desktop-gnome" apt-get install -y kali-desktop-gnome -t kali-rolling
         run_cmd "kali-linux-large" apt-get install -y kali-linux-large -t kali-rolling
-        run_cmd "kali-linux-arm" apt-get install -y kali-linux-arm -t kali-rolling
+        # kali-linux-arm intentionally NOT installed: it's Kali's
+        # metapackage for their ARM SBC images (Raspberry Pi, Rockchip,
+        # Allwinner boards) — it depends on SBC-specific
+        # firmware/tools (rkflashtool, sunxi-tools, dphys-swapfile,
+        # firmware-realtek, etc.) that don't apply to — and in several
+        # cases aren't even installable on — a MacBook Air M1/M2.
         ;;
     parrot)
         echo "$(t step09_installing "parrot-core, parrot-tools-full")"

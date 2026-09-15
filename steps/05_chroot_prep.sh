@@ -38,6 +38,12 @@ fi
 
 [ -e "/dev/mapper/${CRYPTNAME}" ] || run_cmd "luksOpen" cryptsetup open "${TARGET_DISK}${PART_ROOT}" "$CRYPTNAME"
 
+# Give udev/LVM a moment to enumerate the volume group inside the
+# just-opened LUKS container before mounting; mounting immediately after
+# luksOpen can otherwise race with LVM activation.
+echo "$(t step05_luks_settle)"
+sleep 5
+
 mkdir -p "$MNT"
 echo "$(t step05_mounting)"
 run_cmd "mount root" mount "/dev/mapper/${VG}-root" "$MNT"

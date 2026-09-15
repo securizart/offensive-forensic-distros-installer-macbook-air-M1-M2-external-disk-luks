@@ -31,7 +31,7 @@ With more than one OS on the same disk, not every step makes sense as
 
 | Group | Steps | When they run |
 |---|---|---|
-| **Host** | 00, 01, 01a | Once. They don't depend on which OS(es) you'll clone afterwards. |
+| **Host** | 00, 01a, 01 | Once. They don't depend on which OS(es) you'll clone afterwards. |
 | **Per OS** | 02–09 | Repeated **for each operating system** you install on the disk. Each one keeps its own progress, its own partitions, its own LVM group, etc. |
 
 Host step state is stored with plain keys (`STEP_00_STATUS`, ...). Per-OS
