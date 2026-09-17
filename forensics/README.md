@@ -18,6 +18,21 @@ duplicate or reimplement their behavior.
   arm64 alternatives. Offered as an **optional** step, same pattern as
   SIFT.
 
+## Demo account created for this install
+
+`steps/09_package_installation.sh` creates a `remnux` user (in the
+`sudo` group) with the password `malware` right before calling
+`install_remnux_arm64` (`lib/common.sh`), which in turn runs
+`install.sh` above — matching REMnux's own official upstream convention
+for training/demo VMs, not something invented by this installer. The
+vendored `install.sh`/`cleanup.sh`/`verify.sh` scripts themselves don't
+create this account, so step 09 does it directly, only when REMnux is
+actually confirmed for install.
+
+**This repository is public.** `malware` is a well-known, publicly
+documented default — change it before exposing the resulting system to
+any network you don't fully control.
+
 ## Updating these scripts
 
 When a new version is approved on the forensics project, copy its

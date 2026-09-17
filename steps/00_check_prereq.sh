@@ -48,8 +48,9 @@ fi
 ROOT_SRC_DISK=""
 if command -v findmnt >/dev/null 2>&1; then
     ROOT_SRC_DEV="$(findmnt -no SOURCE / 2>/dev/null || true)"
-    # /dev/mapper/xxx-root or /dev/nvme0n1p2 -> try to resolve the physical disk
-    ROOT_SRC_DISK="$(lsblk -no PKNAME "$ROOT_SRC_DEV" 2>/dev/null | head -n1 || true)"
+    # /dev/mapper/xxx-root or /dev/nvme0n1p2 -> resolve the physical disk,
+    # walking through any LVM/LUKS layering in between.
+    ROOT_SRC_DISK="$(resolve_physical_disk "$ROOT_SRC_DEV")"
 fi
 
 # Build the list of candidate disks (excluding the current root disk,

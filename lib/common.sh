@@ -97,6 +97,83 @@ require_root() {
     fi
 }
 
+# resolve_physical_disk DEVICE -> the top-level physical disk's kernel
+# name (e.g. "nvme0n1", "sda") that DEVICE ultimately sits on, walking
+# up lsblk's PKNAME chain as many times as needed. A single PKNAME
+# lookup only returns the IMMEDIATE parent, which for a root filesystem
+# on LVM is the underlying PV/crypt device, not the physical disk — one
+# hop is enough for a plain partition, but not for LVM-on-LUKS (or
+# LVM alone), where there are two or three layers to climb. Returns
+# empty if DEVICE can't be resolved at all.
+resolve_physical_disk() {
+    local dev="$1" name parent
+    name="$(lsblk -no PKNAME "$dev" 2>/dev/null | head -n1 || true)"
+    [ -z "$name" ] && { echo ""; return; }
+    while true; do
+        parent="$(lsblk -no PKNAME "/dev/${name}" 2>/dev/null | head -n1 || true)"
+        [ -z "$parent" ] && break
+        name="$parent"
+    done
+    echo "$name"
+}
+
+# grub_set_var NAME VALUE -> sets NAME=VALUE in /etc/default/grub,
+# replacing any existing line for NAME in place — commented or not,
+# with or without leading whitespace before the '#' — or appending a
+# new line if there's no such line at all. Debian/Ubuntu ship several
+# of these settings (GRUB_DISABLE_OS_PROBER, GRUB_RECORDFAIL_TIMEOUT...)
+# commented out by default; a plain `grep -q '^NAME='` doesn't match
+# that, so a naive "append if not found" ends up adding a second,
+# active line after the harmless-looking commented one instead of
+# replacing it in place — confusing to read, and easy to miss that
+# it's actually the later line taking effect. This targets whichever
+# form is already there.
+grub_set_var() {
+    local name="$1" value="$2"
+    if grep -qE "^[[:space:]]*#?[[:space:]]*${name}=" /etc/default/grub 2>/dev/null; then
+        sed -i -E "s/^[[:space:]]*#?[[:space:]]*${name}=.*/${name}=${value}/" /etc/default/grub
+    else
+        echo "${name}=${value}" >> /etc/default/grub
+    fi
+}
+
+# hold_graphics_kernel_packages -> apt-marks on hold every currently-
+# installed package matching the kernel / GPU-userspace family that's
+# tightly version-coupled on Ubuntu/Asahi (kernel image/headers/modules,
+# ubuntu-asahi itself, Mesa, the display manager/compositor, Xorg/
+# Wayland — see docs/TROUBLESHOOTING.md), and prints the space-separated
+# list so the caller can pass it to unhold_packages afterward.
+#
+# Deliberately NARROWER than holding every installed package: an
+# earlier version of this helper did exactly that, and it blocked
+# SIFT's own SaltStack provisioning from resolving its OWN package
+# dependencies ("E: Unable to correct problems, you have held broken
+# packages" — 140/846 states failed on real hardware, starting with
+# sift.packages.g++). Third-party provisioning can still freely upgrade
+# any OTHER shared library it needs (libc, libstdc++, python, ...);
+# only the pieces that actually caused the graphical session to break
+# are protected here.
+hold_graphics_kernel_packages() {
+    local pkgs
+    pkgs="$(dpkg --get-selections 2>/dev/null \
+        | awk '$2 == "install" {print $1}' \
+        | grep -E '^(linux-(image|headers|modules)|ubuntu-asahi|.*mesa.*|gnome-shell.*|gdm3|xserver-xorg.*|xwayland.*|mutter.*|libdrm.*|libgbm.*|libwayland.*)$' \
+        || true)"
+    if [ -n "$pkgs" ]; then
+        apt-mark hold $pkgs >/dev/null 2>&1
+    fi
+    echo "$pkgs"
+}
+
+# unhold_packages PKG_LIST (space/newline separated, as returned by
+# hold_graphics_kernel_packages)
+unhold_packages() {
+    local pkgs="$1"
+    if [ -n "$pkgs" ]; then
+        apt-mark unhold $pkgs >/dev/null 2>&1
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # User interaction
 # ---------------------------------------------------------------------------

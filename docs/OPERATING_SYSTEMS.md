@@ -6,126 +6,44 @@
 |---|---|---|---|---|
 | `kali` | Kali Linux | Conversion: adds repos on top of the cloned base | Debian/Asahi | Official and mature |
 | `parrot` | Parrot OS | Conversion: adds repos on top of the cloned base | Debian/Asahi | Official, but less tested than Kali on Apple Silicon |
-| `ubuntu` | Ubuntu | Cloned as-is, no conversion | Ubuntu/Asahi | It's the native base; doesn't apply |
+| `sift` | Ubuntu + SIFT | Cloned as-is, no conversion | Ubuntu/Asahi | Official arm64 (SIFT itself) |
+| `remnux` | Ubuntu + REMnux | Cloned as-is, no conversion | Ubuntu/Asahi | ~88% of remnux.addon states succeed on arm64 |
 
 Kali and Parrot are Debian-based distributions with their own `arm64`
 repository: they're obtained by **converting** an already-cloned
 Debian/Asahi base, adding their repository and signing key on top
-(steps 08-09). Ubuntu is different: there's no meaningful "conversion"
-(neither Kali nor Parrot are officially Ubuntu-based, and Ubuntu is
-already Ubuntu), so it's **cloned as-is** from a genuine, separate
-**Ubuntu/Asahi** installation on the internal disk (see
+(steps 08-09). `sift`/`remnux` are different: there's no meaningful
+"conversion" (neither Kali nor Parrot are officially Ubuntu-based, and
+Ubuntu is already Ubuntu), so each is **cloned as-is** from a genuine,
+separate **Ubuntu/Asahi** installation on the internal disk (see
 [Ubuntu Asahi](https://ubuntuasahi.org/), the community project that
-natively installs Ubuntu on Apple Silicon). See below for a caveat on
-which Ubuntu version the *stable* installer actually offers.
+natively installs Ubuntu Desktop 24.04/24.10 on Apple Silicon). There's
+no plain "ubuntu" target — this installer only cares about Ubuntu as a
+forensics base, not as a general-purpose desktop clone.
 
-### Installing the Ubuntu/Asahi source base with Ubuntu 24.04 LTS
+### `sift` and `remnux` are two separate clones, not sub-options of one Ubuntu
 
-The install one-liner published on
-[ubuntuasahi.org](https://ubuntuasahi.org/) resolves its list of
-installable releases from a JSON file the stable installer downloads at
-run time. As of this writing, that stable channel's JSON does **not**
-list Ubuntu 24.04 LTS (Noble) as an installable option, even though it's
-the version this project's Ubuntu/SIFT documentation assumes throughout.
+`sift` and `remnux` are two distinct ids in `SUPPORTED_OS`, each cloned
+independently from the same Ubuntu/Asahi source — **not** two
+sub-options of a single "Ubuntu" install. Every `os_*` helper in
+`lib/os_catalog.sh` (partition labels, LVM volume group name, LUKS
+mapper name, mountpoint) derives its name from the target id, so each
+gets its **own partitions, its own volume group** (`vgsift`,
+`vgremnux`) **and its own LUKS container**, fully independent of the
+other. You can have both installed on the same external disk at once,
+each picked separately from the "Operating systems" menu, each with its
+own GRUB boot entry after its own steps 02-09 run — as opposed to a
+single Ubuntu where answering "yes" to both would install them into the
+same volume group.
 
-Tracing the installer's own source (the script fetches its installer
-tarball and a `REPO_BASE` from the Ubuntu/Asahi maintainer's own file
-host) turned up a **beta** channel whose release JSON does include
-24.04 LTS:
-
-```sh
-curl -sL https://files3.tobhe.de/ubuntu/install-beta | sh
-```
-
-Notes on this before running it on real hardware:
-
-- This is an **unofficial/beta distribution channel**, not the command
-  published on ubuntuasahi.org — it can change or disappear without
-  notice, and isn't covered by the project's usual support.
-- As with any `curl | sh`, inspect the script first instead of piping
-  it blind — e.g. `curl -sL https://files3.tobhe.de/ubuntu/install-beta
-  | less` — before deciding to run it.
-- It only replaces how you install the **source base** on the internal
-  disk. Once Ubuntu 24.04 is up and booted, this repository's own
-  steps (00 onward) work exactly as documented; nothing in
-  `lib/os_catalog.sh` or `steps/*.sh` changes.
-
-**Procedure**, shown in video 2 of the
-[step-by-step walkthroughs](../README.md#step-by-step-video-walkthroughs)
-(run after [partitioning the internal disk](#partitioning-the-internal-disk-for-both-source-bases)
-in video 1):
-
-1. Run the beta installer command above from macOS Terminal.
-2. When prompted for how much of the free space to use, select
-   **60 GB** for this install, leaving the remaining **30 GB** free for
-   the Debian/Asahi base installed afterward (video 3).
-3. From the list of available releases, pick **option #6, Ubuntu
-   Desktop 24.04 LTS**, using the maximum space offered for the
-   install (the 60 GB reserved in the previous step).
-4. Reboot the Mac holding the **power button** to reach the boot
-   picker, and select **Ubuntu**.
-5. Follow Ubuntu's own on-screen installation instructions, then
-   reboot when it finishes.
-6. Complete Ubuntu's first-run setup, creating the first (personal)
-   user however you prefer.
-7. Afterward, create a second, **administrator** account named
-   `remnux` (used later for the forensic-tooling side of this
-   project).
-8. Reboot once more and confirm both accounts appear on the login
-   screen.
-
-> The account name `remnux` matches the forensic-tooling target this
-> project documents in [forensics/README.md](../forensics/README.md);
-> its password is set during the walkthrough for demo purposes only —
-> since this repo and its docs are public, treat any credential
-> mentioned here as compromised by publication and change it (or use a
-> throwaway one) on any build that isn't a disposable lab machine.
-
-### Partitioning the internal disk for both source bases
-
-When preparing the internal disk to host **both** source bases this
-project needs (Debian/Asahi for Kali/Parrot, Ubuntu/Asahi for
-Ubuntu/SIFT/REMnux — see [docs/USAGE.md](USAGE.md)), reserve at least
-**90 GB** combined for the two:
-
-- **60 GB** for Ubuntu Desktop 24.04.
-- **30 GB** for a minimal Debian install.
-
-These are the sizes validated on real MacBook Air M1/M2 hardware for
-this project; adjust upward if you plan to keep large local caches
-(APT/pip package caches, VM images, etc.) on either base.
-
-**Procedure (macOS, before running either the Ubuntu/Asahi or
-Debian/Asahi installer)**, shown in video 1 of the
-[step-by-step walkthroughs](../README.md#step-by-step-video-walkthroughs):
-
-1. In **Disk Utility**, create a new **90 GB** partition on the
-   internal disk, formatted as **ExFAT**. ExFAT is used here only as a
-   throwaway format — Disk Utility's partition-creation dialog needs a
-   filesystem to create the partition with in the first place; the
-   next steps turn it into unformatted free space.
-2. In **Terminal**, list the disks and identify the partition just
-   created (note its `diskXsY` identifier — double-check it's the
-   partition you just made on the **internal** disk, not the external
-   one this project targets later):
-   ```sh
-   diskutil list
-   ```
-3. Unmount it:
-   ```sh
-   diskutil unmount disk#s#
-   ```
-4. Erase it down to unformatted free space, so the native Ubuntu/Asahi
-   and Debian/Asahi installers can each claim their share of it during
-   their own partitioning step (60 GB for Ubuntu in video 2, 30 GB for
-   Debian in video 3):
-   ```sh
-   diskutil eraseVolume "Free Space" "%noformat%" disk#s#
-   ```
-
-`disk#s#` is whatever identifier `diskutil list` reported for that
-partition in step 2 (e.g. `disk0s5`) — replace it accordingly, it isn't
-a literal placeholder to leave as-is.
+This split used to be a single `ubuntu` target with two `confirm_yes_no`
+prompts in step 09 (install SIFT? install REMnux?), and before that
+briefly had a third, plain `ubuntu` id alongside `ubuntu_sift`/
+`ubuntu_remnux`. Both were dropped: choosing `sift` or `remnux` from the
+"Operating systems" menu now **is** the decision — step 09 installs the
+corresponding toolkit unconditionally, with no further prompt, and
+there's no bare-Ubuntu-with-no-toolkit option since this installer's
+Ubuntu targets exist specifically for forensics.
 
 ### Source base verification and automatic menu filtering
 
@@ -153,27 +71,29 @@ with clear instructions on which internal boot entry to pick — see
 > individual tools you need afterwards instead of blocking the whole
 > install over one problematic package.
 
-## Ubuntu: what steps 08-09 do
+## SIFT and REMnux: what steps 08-09 do
 
-- **Step 08**: no repositories to add (it's already genuine Ubuntu) —
-  just `apt update && apt full-upgrade`, to keep the clone current.
+- **Step 08**: no repositories to add for either (they're already
+  genuine Ubuntu) — just `apt update`, no system upgrade (see
+  `docs/TROUBLESHOOTING.md` for why a full-upgrade here previously
+  broke the graphical session on real hardware).
 - **Step 09**:
   1. Installs `ubuntu-desktop` **idempotently** (checks with `dpkg -l`
      whether it's already there and skips if so — the Ubuntu Asahi image
-     usually already ships with a desktop).
-  2. **Optionally** offers (`confirm_yes_no`, never automatic) to
-     install **SIFT Workstation** (SANS), the forensic toolkit — see the
-     full verdict below.
-  3. **Optionally** offers, also via explicit confirmation, to install
-     **REMnux**, the malware-analysis toolkit — see the REMnux verdict
-     below and `forensics/README.md` for where its scripts come from.
+     usually already ships with a desktop). Runs for both targets.
+  2. `sift`: installs **SIFT Workstation** (SANS) — see the full
+     verdict below. Unconditional: choosing this target already is the
+     decision to have SIFT here.
+  3. `remnux`: installs **REMnux** — see the verdict below and
+     `forensics/README.md` for where its scripts come from. Also
+     unconditional, same reasoning.
 
 ## Forensic tools investigated for Ubuntu: verdict
 
 Three candidate forensic distributions/toolkits were evaluated for
-running on top of the cloned Ubuntu. Result:
+running on top of a cloned Ubuntu. Result:
 
-### ✅ SIFT Workstation (SANS) — integrated as an option in step 09
+### ✅ SIFT Workstation (SANS) — integrated as the `sift` target
 
 The project itself (`teamdfir/sift-saltstack`) states in its live,
 official README: **support for Ubuntu 22.04 (Jammy) and 24.04
@@ -198,7 +118,7 @@ officially supports (22.04 and 24.04, with arm64 already integrated).
 It has been superseded by current official support; there's no need to
 follow that guide anymore.
 
-### 🟡 REMnux — in doubt, not fully discarded (open investigation), now offered as an option under Ubuntu
+### 🟡 REMnux — in doubt, not fully discarded (open investigation), now its own `remnux` target
 
 REMnux's official documentation (`docs.remnux.org`) still states,
 repeatedly and recently updated across several pages: *"REMnux is
@@ -233,8 +153,10 @@ which does officially support arm64) softens that categorical "no":
 handful of packages," REMnux — focused on Windows malware analysis —
 likely has a larger fraction of its ~300 tools affected by Wine
 dependencies or vendor-specific amd64-only binaries — a more widespread
-and structurally different problem. **Now offered as an optional step 09
-sub-option** (`confirm_yes_no`, never automatic), by orchestrating the
+and structurally different problem. **Now integrated as its own
+`remnux` target** (step 09, unconditional — no confirmation
+prompt, since choosing that target already is the decision), by
+orchestrating the
 scripts vendored under `forensics/remnux/` from the
 `forensic-distros-silicon-external-disk` satellite project: a full
 `remnux.addon` run (~88% of states succeed), followed by cleanup of
@@ -262,15 +184,15 @@ Each active operating system (`ACTIVE_OS` in the state) has:
 - **Its own LVM volume group** (`vg<id>`) and its own LUKS container
   (`<id>_root_crypt`), with its own passphrase.
 - **Its own progress** in the menu (`OS_<id>_STEP_<N>_STATUS`), so you
-  can have Kali fully done and Ubuntu half-way through, and the menu
+  can have Kali fully done and `sift` half-way through, and the menu
   shows the right thing for each.
 
 Host steps (00, 01, 01a) are done **only once**, not per system: the
 `iac` user, the root password, WiFi and the base packages belong to the
 source Debian/Asahi system, not to each clone. (If you're also going to
-clone toward Ubuntu, keep in mind those host steps were done on
+clone toward `sift`/`remnux`, keep in mind those host steps were done on
 whichever Debian/Asahi was booted at the time — the Ubuntu/Asahi you'll
-boot to clone toward `ubuntu` is a different filesystem with its own
+boot to clone toward `sift`/`remnux` is a different filesystem with its own
 starting user/packages, see `docs/ARCHITECTURE.md`.)
 
 ## What to check after adding a second operating system
@@ -293,6 +215,15 @@ correctly. If the older entry is missing or fails, you can re-run step
 07 for that system (switch the active OS to it and re-run 07) to
 regenerate its native merge.
 
+> **Want both internal bases' boot menus to see each other?** (e.g.
+> Debian/Asahi's menu also offering an entry into Ubuntu+SIFT, or vice
+> versa.) Run the optional `07b_grub_cross_merge.sh` step (menu, right
+> after 07) once per direction — it's a `NO_GATE_STEPS` entry, so it
+> never blocks 08/09. See
+> [docs/ARCHITECTURE.md](ARCHITECTURE.md#two-independent-grubs-and-how-07b-bridges-them)
+> for how it works and why it doesn't need re-syncing after future
+> `update-grub` runs.
+
 ## Adding a new operating system to the catalogue
 
 All the generalization work is already done in the framework; adding a
@@ -302,23 +233,25 @@ places:
 ### 1. `lib/os_catalog.sh`
 
 ```bash
-SUPPORTED_OS=(kali parrot ubuntu blackarch)
+SUPPORTED_OS=(kali parrot sift remnux blackarch)
 
 declare -A OS_LABEL_CODE=(
     [kali]="KALI"
     [parrot]="PARROT"
-    [ubuntu]="UBUNTU"
+    [sift]="SIFT"
+    [remnux]="REMNUX"
     [blackarch]="BLKARCH"   # max. 11 characters for the EFI (FAT) label
 )
 
 # If the new OS needs CONVERSION (like Kali/Parrot), its source base is
-# "debian". If it's CLONED AS-IS (like Ubuntu), its source base is its
-# own id, and requires a separate installation of that OS on the
+# "debian". If it's CLONED AS-IS (like sift/remnux), its source base is
+# "ubuntu", and requires a separate Ubuntu/Asahi installation on the
 # internal disk.
 declare -A OS_SOURCE_BASE=(
     [kali]="debian"
     [parrot]="debian"
-    [ubuntu]="ubuntu"
+    [sift]="ubuntu"
+    [remnux]="ubuntu"
     [blackarch]="debian"   # or whatever applies
 )
 ```
@@ -334,8 +267,8 @@ STRINGS[os_blackarch_desc]="Short description..."
 
 Add a `blackarch)` branch to the `case "$TARGET_OS" in ... esac` in each
 one, with the corresponding keys/repositories and metapackages (if the
-OS requires conversion), or just an `apt update/upgrade` (if it's cloned
-as-is, like Ubuntu).
+OS requires conversion), or just an `apt update` (if it's cloned
+as-is, like `sift`/`remnux`).
 
 **Nothing else needs to change**: the menu, partition-number
 calculation, partitioning, LUKS encryption, cloning, chroot, source-base

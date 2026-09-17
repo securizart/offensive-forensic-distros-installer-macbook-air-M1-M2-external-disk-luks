@@ -31,8 +31,8 @@ source "${BASE_DIR}/lib/common.sh"
 # ---------------------------------------------------------------------------
 # Ordered step definitions
 # ---------------------------------------------------------------------------
-HOST_STEPS=(00 01a 01)
-OS_STEPS=(02 03 04 05 06 07 08 09)
+HOST_STEPS=(00 01 01a)
+OS_STEPS=(02 03 04 05 06 07 07b 08 09 10)
 
 declare -A STEP_FILE=(
     [00]="steps/00_check_prereq.sh"
@@ -44,19 +44,25 @@ declare -A STEP_FILE=(
     [05]="steps/05_chroot_prep.sh"
     [06]="steps/06_grub_finalize.sh"
     [07]="steps/07_grub_merge.sh"
+    [07b]="steps/07b_grub_cross_merge.sh"
     [08]="steps/08_repositories.sh"
     [09]="steps/09_package_installation.sh"
+    [10]="steps/10_grub_menu_fix.sh"
 )
 declare -A STEP_TITLE_KEY=(
     [00]="step00_title" [01]="step01_title" [01a]="step01a_title"
     [02]="step02_title_short" [03]="step03_title_short" [04]="step04_title_short"
     [05]="step05_title_short" [06]="step06_title_short" [07]="step07_title_short"
+    [07b]="step07b_title_short"
     [08]="step08_title_short" [09]="step09_title_short"
+    [10]="step10_title_short"
 )
 # OS steps that DON'T require the previous one to be "done" to run
 # without a warning (06 runs manually inside the chroot opened by 05, so
-# its progress mark never reaches the state the host sees).
-NO_GATE_STEPS=("06")
+# its progress mark never reaches the state the host sees; 07b is
+# genuinely optional — it cross-links the sibling internal base's boot
+# menu, and skipping it never blocks 08/09).
+NO_GATE_STEPS=("06" "07b")
 
 is_no_gate() {
     local id="$1" x
@@ -129,9 +135,13 @@ $(t menu_active_os_unset)"
 build_menu_args() {
     # Fills the global MENU_ARGS array with tag/item pairs for ui_menu.
     MENU_ARGS=()
-    local i id
+    local i id booted_base
+    booted_base="$(state_get BOOTED_BASE)"
     for ((i=0; i<${#HOST_STEPS[@]}; i++)); do
         id="${HOST_STEPS[$i]}"
+        # 01a (WiFi) always self-skips on Ubuntu/Asahi (see its own
+        # note) — no point listing it there, it never does anything.
+        [ "$id" = "01a" ] && [ "$booted_base" = "ubuntu" ] && continue
         MENU_ARGS+=("$id" "$(t "${STEP_TITLE_KEY[$id]}") [$(compute_host_status_label "$id" "$i")]")
     done
 

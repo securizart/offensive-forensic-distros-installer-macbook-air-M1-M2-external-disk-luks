@@ -18,26 +18,37 @@
 # No need to touch install.sh or the rest of steps/*: those are generic
 # and use $TARGET_OS to derive partition/VG/mapper names.
 
-SUPPORTED_OS=(kali parrot ubuntu)
+SUPPORTED_OS=(kali parrot sift remnux)
 
 declare -A OS_LABEL_CODE=(
     [kali]="KALI"
     [parrot]="PARROT"
-    [ubuntu]="UBUNTU"
+    [sift]="SIFT"
+    [remnux]="REMNUX"
 )
 
 # --- expected source base per target OS ------------------------------------
 # Kali and Parrot are obtained by CONVERTING an already-cloned Debian/Asahi
-# base (adding their own repos on top, see steps/08 and 09). Ubuntu, on
-# the other hand, is cloned AS-IS from a genuine, separate Ubuntu/Asahi
-# install on the internal disk — there's no meaningful conversion path:
+# base (adding their own repos on top, see steps/08 and 09). sift and
+# remnux are different: they're cloned AS-IS from a genuine, separate
+# Ubuntu/Asahi install on the internal disk (no plain "ubuntu" target —
+# this installer only cares about Ubuntu as a forensics base, not as a
+# general-purpose desktop clone) — there's no meaningful conversion path:
 # Parrot and Kali are officially Debian-based distributions, not
 # Ubuntu-based, so "converting from Ubuntu" isn't supported and isn't
 # considered here.
+#
+# sift and remnux are separate CLONES of the same Ubuntu base, each with
+# their own partitions/VG (since every os_* helper below derives names
+# from the id: vgsift, vgremnux) — not sub-options of a single install.
+# This lets you keep an Ubuntu+SIFT and an Ubuntu+REMnux as two
+# independently bootable systems on the same external disk, instead of
+# forcing them to share one volume group. See docs/OPERATING_SYSTEMS.md.
 declare -A OS_SOURCE_BASE=(
     [kali]="debian"
     [parrot]="debian"
-    [ubuntu]="ubuntu"
+    [sift]="ubuntu"
+    [remnux]="ubuntu"
 )
 
 # Maps the booted system's /etc/os-release ID= field to our internal

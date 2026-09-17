@@ -1,15 +1,12 @@
-<p align="center">
-  <img src="assets/logo.jpeg" alt="Offensive & Forensic Distros Installer logo" width="240">
-</p>
-
-# Offensive & Forensic Distros Installer for MacBook Air M1/M2 (external disk, LUKS)
+# Offensive & Forensic Distros Installer for MacBook Air M1/M2 (external disk, LUKS) — internal codename `base_inst_kali`
 
 A menu-driven installer with support for **several offensive operating
 systems** (Kali Linux, Parrot Security OS) **and forensic toolkits**
-(SIFT Workstation, REMnux, offered as options under Ubuntu) on an
+(SIFT Workstation, REMnux — each its own independently bootable Ubuntu
+clone) on an
 external USB disk with encrypted partitions, cloned from a
-**Debian/Asahi** (for Kali/Parrot) or **Ubuntu/Asahi** (for Ubuntu, and
-whichever forensic tools you add on top) base already installed on an
+**Debian/Asahi** (for Kali/Parrot) or **Ubuntu/Asahi** (for the SIFT
+and REMnux targets) base already installed on an
 Apple Silicon MacBook Air/Pro (M1/M2). `/boot` (EFI + kernel) stays on
 the Mac's internal disk; the root filesystem lives on the external
 disk.
@@ -20,9 +17,8 @@ Debian/Asahi (internal NVMe) ──clones──▶ external USB disk
                                            └── Parrot Security OS (its own partitions)
 
 Ubuntu/Asahi (internal NVMe) ──clones──▶ external USB disk
-                                           └── Ubuntu (its own partitions)
-                                                 ├── + SIFT Workstation (optional)
-                                                 └── + REMnux (optional)
+                                           ├── Ubuntu + SIFT (its own partitions)
+                                           └── Ubuntu + REMnux (its own partitions)
 ```
 
 Both bases are separate, non-converting internal installs — see
@@ -51,10 +47,7 @@ repository:
 - **Asahi Linux / Debian** — to clone toward **Kali** or **Parrot**
   (converted by adding their repository on top of this base).
 - **Ubuntu Asahi** — to clone toward **Ubuntu** (cloned as-is, no
-  conversion; see [ubuntuasahi.org](https://ubuntuasahi.org/)). The
-  stable installer may not currently offer **Ubuntu 24.04 LTS** — see
-  [docs/OPERATING_SYSTEMS.md](docs/OPERATING_SYSTEMS.md#installing-the-ubuntuasahi-source-base-with-ubuntu-2404-lts)
-  for the workaround.
+  conversion; see [ubuntuasahi.org](https://ubuntuasahi.org/)).
 
 This project **does not install macOS or any of these bases**: it
 assumes they already exist and work, and clones whichever one matches
@@ -68,9 +61,6 @@ target requires (see
 > **both bases installed on the internal disk**: Debian/Asahi for
 > Kali/Parrot, and Ubuntu/Asahi for the Ubuntu target (which is where
 > SIFT and REMnux hang off, see [docs/OPERATING_SYSTEMS.md](docs/OPERATING_SYSTEMS.md)).
-> Each OS takes ≈89.5 GB on the external disk (512 MB EFI + 2 GB boot +
-> 87 GB root) — **for more than one operating system on the same disk,
-> use at least a 500 GB external disk**, not the bare minimum.
 > Neither base can be converted into the other after the fact — you
 > switch between them by rebooting the Mac and picking the corresponding
 > internal boot entry. Note that host steps 00/01/01a will need to be
@@ -152,21 +142,19 @@ trial-and-error:
   version" is automatically the right one.
 - There is no automatic uninstaller yet. Reverting the changes requires
   manual partition editing.
+- **If you install the `remnux` target**, step 09
+  creates a `remnux` account with the well-known public password
+  `malware` — REMnux's own upstream convention for training/demo VMs,
+  not something invented by this installer. This repository is public:
+  **change that password** before exposing the resulting system to any
+  network you don't fully control.
 - Use this project at your own risk. Recommended only on test machines
   or with a full, verified backup.
 
 ## Getting started
 
-Run this from a terminal on the already-booted Asahi base itself
-(Debian/Asahi or Ubuntu/Asahi, on the **internal** disk — see
-Prerequisites above), not from macOS or any other machine. `git` isn't
-installed by default on a fresh Asahi base, and there's no network yet
-until step 01a runs, so get the installer onto the machine via **USB
-drive** first (download/clone this repo elsewhere, copy it to a USB
-drive, then copy it from there into a local folder on the booted
-Asahi base):
-
 ```bash
+git clone https://github.com/securizart/offensive-forensic-distros-installer-macbook-air-M1-M2-external-disk-luks.git
 cd offensive-forensic-distros-installer-macbook-air-M1-M2-external-disk-luks
 sudo bash install.sh
 ```
@@ -266,30 +254,28 @@ Update this table as confirmed via the repository's `Issues`.
 The video also shows the installation and use of **Ubuntu** on top of
 this same base, as a proof of concept — see the roadmap below.
 
-## Step-by-step video walkthroughs
+### SIFT / REMnux on Ubuntu/Asahi (v1.4.0)
 
-Companion series on YouTube covering the base Asahi installs and each
-conversion path from scratch, hardware-recorded on MacBook Air M1/M2.
-Links are added as each video is published.
+[![Demo: installing SIFT Workstation and REMnux on Ubuntu/Asahi on Apple Silicon](https://img.youtube.com/vi/OeyCN1R_Tqc/hqdefault.jpg)](https://youtu.be/OeyCN1R_Tqc)
 
-| # | Video | Link |
-|---|---|---|
-| 1 | Preparing internal disk partitions (90 GB: 60 GB Ubuntu Desktop 24.04 + 30 GB Debian minimal) | [Watch](https://youtu.be/i-P85ajE-7I) |
-| 2 | Installing Debian/Asahi | [Watch](https://youtu.be/aOQpekan4mk) |
-| 3 | Installing Ubuntu/Asahi | [Watch](https://youtu.be/ZerajpZtm0I) |
-| 4 | Preparing and converting to Kali | [Watch](https://youtu.be/scGwTnxU-Hc) |
-| 5 | Preparing and converting to Parrot | [Watch](https://youtu.be/wb82dBMkrwI) |
-| 6 | Preparing and converting to SIFT | _pending_ |
-| 7 | Preparing and converting to REMnux | _pending_ |
+▶️ **[Watch on YouTube](https://youtu.be/OeyCN1R_Tqc)**
+
+Covers the `sift`/`remnux` targets end to end: cloning from
+Ubuntu/Asahi, the LUKS/GRUB setup, and the cross-link (step 07b) with
+a Debian/Asahi base already holding Kali/Parrot on the same external
+disk.
 
 ## Roadmap
 
-- ~~Ubuntu as a third installable operating system~~ — **implemented**:
-  `ubuntu` is now in the catalogue (`lib/os_catalog.sh`), cloned as-is
-  from a genuine Ubuntu/Asahi installation (no conversion, unlike
-  Kali/Parrot). Includes idempotent `ubuntu-desktop` install and,
-  optionally, **SIFT Workstation (SANS)** — official arm64 support
-  confirmed on Ubuntu 22.04/24.04. See
+- ~~Ubuntu as a base for forensic targets~~ — **implemented**:
+  `sift` and `remnux` are two separate ids in the catalogue
+  (`lib/os_catalog.sh`), each cloned as-is from a genuine Ubuntu/Asahi
+  installation (no conversion, unlike Kali/Parrot), each with its own
+  partitions/volume group (`vgsift`, `vgremnux`) — independently
+  bootable clones with **SIFT Workstation (SANS)** and **REMnux**
+  respectively baked in. No plain "ubuntu" target: this installer only
+  cares about Ubuntu as a forensics base. Official arm64 support for
+  SIFT confirmed on Ubuntu 22.04/24.04. See
   [docs/OPERATING_SYSTEMS.md](docs/OPERATING_SYSTEMS.md) for the
   full detail, including why CAINE was discarded.
 - ~~Automatic base detection for the "Operating systems" menu~~ —
@@ -298,8 +284,8 @@ Links are added as each video is published.
   actually target it (`os_targets_for_base` in `lib/os_catalog.sh`).
   `verify_source_base` still runs as a blocking safety net at steps
   02-04. See [docs/OPERATING_SYSTEMS.md](docs/OPERATING_SYSTEMS.md).
-- ~~REMnux, under investigation~~ — **implemented as an optional step 09
-  sub-option under Ubuntu** (like SIFT): orchestrates the scripts
+- ~~REMnux, under investigation~~ — **implemented as its own
+  `remnux` target** (like `sift`): orchestrates the scripts
   vendored under `forensics/remnux/` from the
   `forensic-distros-silicon-external-disk` satellite project, which
   owns the actual install/cleanup/verify logic and its ~88%-success

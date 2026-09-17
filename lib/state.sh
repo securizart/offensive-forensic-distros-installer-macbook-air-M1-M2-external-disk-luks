@@ -87,6 +87,17 @@ os_step_status() {
     echo "${v:-pending}"
 }
 
+# os_reset_step OS STEP_ID -> clears a step's recorded status/timestamp
+# back to "pending" for a given OS. Used when an earlier destructive
+# step (e.g. reformatting in step 03) re-runs: later steps that
+# operated on the data being replaced shouldn't stay marked "done" from
+# a previous attempt, or the menu lets you jump straight to 07b/08/09
+# without 05-07 ever having touched the fresh clone.
+os_reset_step() {
+    state_set "OS_${1}_STEP_${2}_STATUS" ""
+    state_set "OS_${1}_STEP_${2}_TS" ""
+}
+
 # os_list_add OS -> adds OS to the list of OSes with an install started
 # (idempotent; ',' separated).
 os_list_add() {

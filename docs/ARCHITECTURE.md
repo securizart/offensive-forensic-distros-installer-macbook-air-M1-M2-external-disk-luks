@@ -31,7 +31,7 @@ With more than one OS on the same disk, not every step makes sense as
 
 | Group | Steps | When they run |
 |---|---|---|
-| **Host** | 00, 01a, 01 | Once. They don't depend on which OS(es) you'll clone afterwards. |
+| **Host** | 00, 01, 01a | Once. They don't depend on which OS(es) you'll clone afterwards. |
 | **Per OS** | 02–09 | Repeated **for each operating system** you install on the disk. Each one keeps its own progress, its own partitions, its own LVM group, etc. |
 
 Host step state is stored with plain keys (`STEP_00_STATUS`, ...). Per-OS
@@ -145,15 +145,48 @@ isn't blocked waiting for a mark that will never show up on the host.
 
 ## Merging `grub.cfg` with several operating systems
 
-Step 07 runs `update-grub` on the host before merging, which
-**regenerates the host's `grub.cfg` from scratch**. If you'd already
-merged another OS's entry before (e.g. Kali) and there's now a
-well-formed copy of that system on disk (with its own `fstab`),
-`os-prober` will likely detect it automatically and add it back — as a
-generic "chainload" entry, not the native one this script builds by
-hand. The OS being processed *right now* does get the full native
-treatment, with the correct kernel parameters. Check the boot menu after
-adding a second system to confirm both entries are still there.
+Step 07 captures the target's native GRUB entries (the first complete
+`BEGIN`/`END /etc/grub.d/10_linux` block from its own `grub.cfg`) and
+bakes them into a small, persistent script at
+`/etc/grub.d/46_iac_merged_<target>` — not by splicing text directly
+into the host's `grub.cfg` (an earlier version did that, one-time;
+that copy silently disappeared the next time *anything* else ran
+`update-grub` on the host — a kernel update, or step 07b's own
+`update-grub` when cross-linking a completely different target —
+since it was never captured in `/etc/grub.d/` at all). With the
+per-target script in place, every OS already processed for this host
+keeps showing up automatically on every future `update-grub`, without
+needing that target's disk mounted or step 07 re-run for it.
+
+## Two independent GRUBs, and how 07b bridges them
+
+Kali/Parrot need Debian/Asahi booted to be cloned, and Ubuntu needs
+Ubuntu/Asahi booted (`OS_SOURCE_BASE`, `verify_source_base`, see below).
+Since these are two separate internal installs with their own root
+filesystem, they also end up with two separate, independently
+maintained `/boot/grub/grub.cfg` files. Step 07's merge always writes
+into whichever one is currently booted (the "host" at that moment):
+processing `kali`/`parrot` while booted in Debian/Asahi merges into
+Debian's own `grub.cfg`; processing `ubuntu` while booted in Ubuntu/Asahi
+merges into Ubuntu's own `grub.cfg`. **There is no single, unified GRUB
+menu across both internal bases** — picking between "Kali/Parrot mode"
+and "Ubuntu+SIFT mode" happens at the Mac's own boot-entry level first
+(which internal install to boot), and only then does that install's own
+GRUB offer its own native + external-disk entries.
+
+`steps/07b_grub_cross_merge.sh` (optional, listed in `NO_GATE_STEPS`)
+bridges the two without duplicating any menuentry text: it drops a
+small script into the *sibling* base's `/etc/grub.d/` that does
+`search --fs-uuid` + `configfile` against the current host's own
+`grub.cfg`. Because it loads that file live at boot time rather than
+copying its contents, it never goes stale — future kernel updates or
+additional OS merges on either base show up automatically on both
+sides, with no re-sync step needed. This chainload only needs the
+standard `part_gpt`/`ext2` GRUB modules (present by default on any
+modern GRUB EFI install); the `cryptodisk`/`luks`/`lvm` modules are only
+needed one level deeper, inside whichever `grub.cfg` ends up being
+loaded once the chainload entry is picked — already verified present on
+a stock Ubuntu/Asahi install.
 
 ## Source base verification (Kali/Parrot vs. Ubuntu)
 

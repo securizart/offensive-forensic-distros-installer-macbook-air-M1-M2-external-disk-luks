@@ -3,232 +3,304 @@
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 All dates in YYYY-MM-DD.
 
-## [1.3.0] — Parrot codename, desktop, and multi-OS GRUB merge
+## [1.4.0] - 2026-09-17
 ### Fixed
-- **`steps/08_repositories.sh`/`steps/09_package_installation.sh` —
-  `404 Not Found` on `deb.parrot.sh` for Parrot's repositories**: Parrot
-  renamed its stable/rolling suite from the old `lts` codename to
-  `echo` (Parrot OS 7.x, aligned with Debian "trixie", confirmed via
-  ParrotSec's own mirrors documentation). Updated `sources.list`,
-  `preferences.d/parrot.pref`, and every `-t lts` flag to `-t echo`.
-  `echo-security` now points at `deb.parrot.sh/direct/parrot` per
-  upstream's own recommendation, instead of a regular mirror.
-- **`steps/09_package_installation.sh` — Parrot booted with no
-  graphical desktop**: `parrot-core` and `parrot-tools-full` never
-  pulled in a desktop environment — Parrot ships that separately as
-  `parrot-interface` (which depends on one of
-  `parrot-desktop-kde`/`-mate`/`-xfce`/... as apt alternatives). Since
-  Parrot OS 7.0 the default DE is KDE Plasma (it was MATE up to 6.x),
-  so `parrot-desktop-kde` and `parrot-interface` are now installed
-  explicitly for the `parrot` target, pinning that alternative instead
-  of leaving it to apt's dependency resolution.
-- **`steps/07_grub_merge.sh` — a previous OS's native GRUB entry
-  silently disappears when a THIRD operating system is added**: every
-  OS's root partition lives inside its own LUKS container, but
-  `os-prober` needs to mount an OS's root filesystem to identify it —
-  it can't look inside one that's closed. Relying on `os-prober` to
-  recover a previously-merged entry (as this step used to) only ever
-  worked for the single most recently processed OS; adding a third one
-  silently dropped whichever entry wasn't currently open. This step now
-  loops over every OS in `OS_LIST` and merges each one's own
-  `10_linux` GRUB fragment explicitly, mounting only that OS's
-  (unencrypted) boot partition to read it — no LUKS passphrase needed,
-  since `grub.cfg` lives on `boot`, not on the encrypted root.
-  `STRINGS[step07_reboot_notice]` updated accordingly: it used to say
-  "pick the second entry", which stops being correct once there are
-  more than two operating systems in the merged menu; it now names the
-  OS being processed and says to pick the LAST entry instead, since
-  this step always merges the active OS in last.
+- **`grub_set_var` helper (`lib/common.sh`) replaces the fragile
+  per-setting `grep`/`sed` blocks in steps 07 and 10**: those only
+  matched an already-uncommented line (`^NAME=`), so a stock, commented
+  default (Debian/Ubuntu ship `GRUB_DISABLE_OS_PROBER` and others
+  commented out) was never found, and a second, active line got
+  appended after it instead — confusing, and apparently not reliably
+  taking effect in practice. `grub_set_var` matches and replaces the
+  existing line whether it's commented or not, in place.
+- **Steps 07 and 10 keep `GRUB_DISABLE_OS_PROBER=true`** (Debian/
+  Ubuntu's own default) rather than enabling it: briefly tried
+  enabling it so os-prober could auto-detect the sibling base as a
+  complement to step 07b's own cross-link script, but confirmed on
+  real hardware that os-prober's guessed entry for a LUKS-rooted
+  sibling doesn't pick up that base's real boot parameters
+  (`root=`, `cryptdevice=`, initrd path) and fails to boot — unlike
+  07b's `45_iac_cross_<base>` script, which loads the sibling's live
+  `grub.cfg` via `configfile` and always gets it right. Reverted;
+  `grub_set_var` explicitly re-asserts `true` in both steps now.
 ### Added
-- **`steps/07_grub_merge.sh` — step 06's progress no longer shows as
-  permanently "pending" in the menu**: step 06 runs inside the chroot,
-  where `STATE_DIR` resolves to the *external disk's own* filesystem,
-  not the host's, so its "done" mark never reached the host's
-  `state.conf` that the menu reads from (`NO_GATE_STEPS=("06")` in
-  `install.sh` already accounted for this not blocking progress, but
-  the display itself stayed wrong). Step 07 now reads that mark back
-  from the disk's own copy of `state.conf` — still mounted at this
-  point — and propagates it to the host, purely cosmetic, no behavior
-  change.
-
-## [1.2.0] — Project logo
-### Added
-- **Project logo** (`assets/logo.jpeg`), embedded at the top of
-  `README.md`.
-### Changed
-- **README title**: dropped the `— internal codename \`base_inst_kali\``
-  suffix. The codename is still documented inline where it's actually
-  relevant (state directory, support-file paths, chroot copy target).
-- **`docs/USAGE.md` / `README.md` — made explicit where/how to get the
-  installer onto the machine**: added a basic checklist at the top of
-  "Before you start" (boot into the matching Asahi base on the
-  internal disk → copy the installer into a folder there → run it as
-  root from that folder) and clarified in "Getting started"/"Starting
-  the installer" that this all happens on the booted Asahi base
-  itself, not on macOS or another machine. Also corrected the initial
-  copy method to **USB drive** instead of `git clone`: a fresh Asahi
-  base has no `git` installed and no network yet (until step 01a
-  runs), so `git clone` isn't actually usable for getting the
-  installer onto the machine the first time.
-- **README — video 4 link added** (Kali conversion) and **disk-size
-  guidance**: documented the ≈89.5 GB per-OS minimum on the external
-  disk (from `steps/02_partitions.sh`'s 512 MB + 2 GB + 87 GB) and
-  recommended at least a 500 GB external disk when installing more
-  than one operating system on it, in `README.md` and
-  `docs/USAGE.md`.
+- **New step 10, GRUB menu safety net**, only for Ubuntu-sourced
+  targets (`sift`, `remnux`): re-applies `GRUB_TIMEOUT_STYLE=menu`,
+  `GRUB_TIMEOUT=10`, `GRUB_RECORDFAIL_TIMEOUT=10`, `GRUB_DEFAULT=0` and
+  clears any saved GRUB default again, right after step 09. Nothing
+  between step 07 and here is supposed to touch `/etc/default/grub` or
+  GRUB's saved-entry state, but step 09 installs a large number of
+  packages and a kernel-related trigger firing an automatic
+  `update-grub`/`grub-install` somewhere in that process is a
+  plausible way for step 07's settings to end up reverted. Cheap and
+  idempotent to redo either way. Skips immediately (no-op) for
+  `kali`/`parrot`.
 ### Fixed
-- **`steps/01a_network.sh` — wpa_supplicant.conf missing directives on
-  Debian Trixie**: `wpa_passphrase` never emits `scan_ssid`/`key_mgmt`
-  (confirmed on Trixie's wpasupplicant, though this is inherent to the
-  tool everywhere, not version-specific); now inserted explicitly so
-  hidden-SSID networks still connect.
-- **`steps/01a_network.sh` — no interface actually brought up**: writing
-  `wpa_supplicant.conf` alone did nothing on this ifupdown-based base
-  (no NetworkManager). Now auto-detects the wireless interface (via
-  `/sys/class/net/*/wireless`) and writes the matching
-  `/etc/network/interfaces.d/<iface>` stanza, adding
-  `source /etc/network/interfaces.d/*` to `/etc/network/interfaces` if
-  missing. Bring-up now retries up to 5 times (5s apart), checking for
-  an actual IPv4 address rather than trusting `ifup`'s exit code alone,
-  and never aborts the main install flow if it can't confirm a
-  connection.
-- **Host step order**: `HOST_STEPS` in `install.sh` now runs
-  `00 → 01a → 01` (was `00 → 01 → 01a`) — step 01 needs network for its
-  own `apt update`/`apt install`. Updated the walkthrough numbering in
-  `docs/USAGE.md` and the step table in `docs/ARCHITECTURE.md` to
-  match. Added a warning in `steps/01a_network.sh` that the console
-  keyboard layout is still the base image's default (normally US
-  English) at this point, since keyboard/locale setup (step 01) hasn't
-  run yet.
-- **`steps/01_preparation.sh`**: replaced the deprecated `ntpdate`
-  package with `ntpsec-ntpdate`.
-- **`steps/05_chroot_prep.sh`**: added a 5s pause after `cryptsetup
-  open` and before mounting, to let udev/LVM finish enumerating the
-  volume group inside the just-opened LUKS container.
-- **`steps/08_repositories.sh` — `apt-key: command not found` on Debian
-  Trixie**: `apt-key` was fully removed in Debian 13 "Trixie" (deprecated
-  since Debian 11/12). Kali's signing key now uses the same
-  `gpg --dearmor` + `signed-by=` pattern already used for Parrot,
-  instead of `apt-key add`.
-- **`steps/07_grub_merge.sh` — duplicated `### END
-  /etc/grub.d/30_os-prober ###` marker in the merged `grub.cfg`**:
-  off-by-one in the final `sed` range (started at `c1` instead of
-  `c1+1`), re-copying a line already included by the first `sed` call.
-  Harmless to GRUB itself (a duplicated comment), but left the file
-  structurally wrong.
-- **`steps/08_repositories.sh` — stale "Debian GNU/Linux" boot menu
-  title after conversion**: added `update-grub` at the end of the step
-  (Kali/Parrot only) so this disk's own `grub.cfg` picks up the real
-  distro name from `/etc/os-release` once `dist-upgrade` has replaced
-  `base-files`. Note this only fixes this disk's own copy — re-run step
-  07 from the host afterward to refresh the merged entry there too.
-- **`steps/04_cloning.sh` — UUID resolution for fstab/crypttab**:
-  switched from parsing default-format `blkid` output with a regex to
-  `blkid -o export` (the `KEY=value`, unquoted format util-linux itself
-  recommends for scripting), more robust across util-linux versions.
-- **`steps/08_repositories.sh` — `dpkg: trying to overwrite '/usr/bin/rev',
-  which is also in package util-linux` during Kali's `dist-upgrade`**:
-  package-file moves between the Debian trixie and kali-rolling
-  generations (`rev` moved from `util-linux` to `bsdextrautils`, per
-  util-linux's own changelog) can trip dpkg's overwrite-conflict check
-  on a jump this big. Added `-o Dpkg::Options::="--force-overwrite"` to
-  the `dist-upgrade`/`--fix-broken install` calls for both Kali and
-  Parrot — the standard, documented way through this class of
-  cross-repo file-conflict.
-- **`steps/08_repositories.sh` — `pkgProblemResolver::Resolve generated
-  breaks` when repairing after the above**: `apt --fix-broken install`
-  had no way to reach the kali-rolling/lts package versions needed to
-  resolve the break, since `kali.pref`/`parrot.pref` pin those repos at
-  priority 50 precisely so apt won't touch them without being asked.
-  Tried `-t kali-rolling` first, but that can itself fail ("no es
-  válido para APT::Default-Release") if the release/index state is
-  stale mid-repair; switched to disabling preferences entirely for that
-  one call (`-o Dir::Etc::Preferences=/dev/null -o
-  Dir::Etc::PreferencesParts=/dev/null`) instead.
-- **`steps/08_repositories.sh` — Kali's `dist-upgrade` removing
-  `grub-efi-arm64`/`grub-efi-arm64-bin` in favor of `systemd-boot`**:
-  kali-rolling's arm64 packaging can pull in `systemd-boot`/
-  `shim-signed` and drop GRUB as part of a big `dist-upgrade`.
-  `systemd-boot`'s own boot-entry creation then failed to configure on
-  this Asahi/EFI setup, leaving `dpkg` broken either way, and this
-  project's boot chain is entirely GRUB-based (steps 05-07 hand-build
-  the merged `grub.cfg`). Added `/etc/apt/preferences.d/
-  no-systemd-boot.pref` (`Pin-Priority: -1` for `systemd-boot*`,
-  `shim-signed*`, `shim-unsigned`) before the `dist-upgrade` call so
-  apt's solver can't pull them in or remove GRUB to begin with.
-- **`steps/08_repositories.sh` — hibernate/resume warning during
-  `update-initramfs`**: the swap volume on this external/clonable disk
-  has no stable UUID/device-numbering guarantee across disks, and this
-  project has no hibernate use case. Set `RESUME=none` explicitly in
-  `/etc/initramfs-tools/conf.d/resume` at the start of the step (before
-  any `apt update`/`dist-upgrade` triggers a rebuild), instead of
-  leaving it to auto-detection.
-- **`steps/08_repositories.sh` — cloned WiFi config pointed at the wrong
-  interface name**: `wpa_supplicant.conf`/`interfaces.d` are cloned from
-  the host in step 04 with the HOST kernel's interface name (e.g.
-  `wlan0` on Debian/Asahi); the target OS's own kernel can name the
-  same physical adapter differently (observed: `wld0` on Kali),
-  intermittent connectivity followed (likely from some other fallback,
-  not the stale config). Step 08 now re-detects the wireless interface
-  on ITS OWN kernel first and rewrites the `interfaces.d` stanza under
-  the current name before any `apt` operation.
-- **`steps/09_package_installation.sh` — `kali-linux-arm` unsatisfiable
-  dependencies**: that metapackage is Kali's own bundle for their ARM
-  SBC images (Raspberry Pi, Rockchip, Allwinner boards), depending on
-  SBC-specific firmware/tools (`rkflashtool`, `sunxi-tools`,
-  `dphys-swapfile`, `firmware-realtek`, etc.) that don't apply to — and
-  in several cases aren't installable on — a MacBook Air M1/M2. Removed
-  from the metapackage install list; `kali-linux-default`,
-  `kali-desktop-gnome` and `kali-linux-large` are unaffected and cover
-  everything this project actually needs.
-- **`steps/09_package_installation.sh` — WiFi interface name drifting
-  between boots**: on top of the host→clone naming mismatch from step
-  08 (see above), this same adapter's kernel-assigned name has been
-  observed to change again between reboots on this hardware alone
-  (`wld0` vs `wlp1s0f0` for the SAME physical MAC), so whatever step 08
-  detected before its own reboot can already be stale by the time this
-  step runs. Added a fresh re-detection at the start of step 09 that
-  also drops any orphaned `interfaces.d` stanza left under a previous
-  name, and pins the adapter's MAC to a fixed `wlan0` via a udev rule
-  so future boots stop drifting.
-- **`steps/07_grub_merge.sh` — reboot instructions were too vague**:
-  both GRUB entries are still labeled "Debian GNU/Linux" at this point
-  (conversion happens in step 08, not before), so "pick the
-  corresponding entry" left room for picking the wrong one. Added an
-  explicit notice to pick the SECOND entry, and step 07 now reboots
-  automatically after a 5s pause (matching step 08's pattern) instead
-  of ending and leaving the reboot to the user.
-- **`steps/04_cloning.sh` and `steps/07_grub_merge.sh` — step wrongly
-  shown as still pending after booting from the cloned disk**:
-  `sync_state_to_mount` (which copies progress onto the external disk
-  for the installer to pick up once booted from there) ran BEFORE
-  `mark_os_step_done`, so the copy it left out was always missing that
-  same step's own completion. Swapped the order in both steps.
-
-## [1.1.0] — Ubuntu/Asahi 24.04 source-base workaround
+- **Step 09's `cast install` (SIFT) no longer aborts the whole step on
+  a partial failure**: a handful of failed salt states out of hundreds
+  (expected on arm64 per SIFT's own docs — some packages are amd64-only)
+  still makes `cast` exit non-zero, which fired the script's global
+  `ERR` trap since the call wasn't inside a conditional — aborting step
+  09 immediately and skipping `unhold_packages`, leaving the
+  kernel/GPU-userspace hold in place indefinitely even though the bulk
+  of the install (840/846 states in one real run) had actually
+  succeeded. Now checked in an `if`, so a partial failure just logs a
+  warning and still releases the hold and finishes the step normally.
+- **Step 07's merge is now persistent**: instead of one-time splicing
+  the target's native GRUB entries directly into the host's
+  `grub.cfg`, it bakes them into a small script at
+  `/etc/grub.d/46_iac_merged_<target>`. Found on real hardware that
+  the one-time splice silently disappeared the moment anything else
+  regenerated `grub.cfg` — specifically, step 07b's own `update-grub`
+  on the *sibling* base wiped out previously-merged Kali/Parrot
+  entries there, since they'd never been captured in `/etc/grub.d/`
+  at all. Every target already processed now keeps showing up on any
+  future `update-grub`, on either base, without needing that target's
+  disk mounted or step 07 re-run for it.
+- **Step 01's keyboard/locale setup no longer relies on
+  `dpkg-reconfigure`'s own interactive dialog**: `debconf`'s Dialog
+  frontend checks whether stdout is a real terminal, and
+  `init_step_log`'s per-step log capture (`exec > >(tee ...)`) means
+  it isn't — so it was silently falling back to noninteractive and
+  keeping Ubuntu/Asahi's own "us" default without ever actually
+  asking, even though the step appeared to pause for several minutes.
+  `whiptail` itself is unaffected (it talks to `/dev/tty` directly),
+  so step 01 now asks for the keyboard layout and locale with our own
+  `ui_inputbox` and writes `/etc/default/keyboard`/`/etc/default/locale`
+  directly, for both bases.
+- **`07b`'s partition scan now handles a separate `/boot` partition
+  for the sibling base**: it required `grub.cfg` to live directly
+  inside the candidate root partition, so a Debian/Asahi (or
+  Ubuntu/Asahi) install with root and boot as two different
+  partitions — confirmed on real hardware via `blkid`/`lsblk` — was
+  never found even though `/etc/os-release` matched correctly. Now
+  reads the candidate root's own `/etc/fstab` for where `/boot` is
+  mounted when it isn't co-located, and mounts that partition too
+  (at `<root>/boot`) before touching `grub.cfg`.
+- **Step 01 now reconfigures locale/keyboard for Ubuntu/Asahi too**,
+  interactively, instead of skipping it: Ubuntu/Asahi's own image
+  ships with `XKBLAYOUT="us"` and an English locale by default, and
+  relying on the user creating `preparation/keyboard`/
+  `preparation/locale` on the host kept not happening in practice.
+  Fixing it at the source (the host, before step 04 clones `/`) means
+  the clone inherits the right layout/language automatically.
+- **Step 07 now also forces `GRUB_DEFAULT=0` and clears any saved
+  GRUB default (`grub-editenv ... unset saved_entry`)**: found on real
+  hardware that manually picking a merged external entry once (to
+  test that it boots) gets remembered under `GRUB_DEFAULT=saved`
+  (Ubuntu's common setting) and silently reused on every later
+  automatic reboot — including steps 02/03's own unattended reboots —
+  landing back on the external clone instead of the internal host on
+  the next run, and masking both the "menu doesn't wait" and 07b's
+  "wrong root device" symptoms as if they were separate bugs.
+- **Step 07's merge could produce an unparseable `grub.cfg`**, dropping
+  GRUB to its `grub>` command prompt instead of showing the menu at
+  all: the "widest span" fix for multiple `BEGIN`/`END
+  /etc/grub.d/10_linux` marker pairs (first `BEGIN` to last `END`)
+  could splice in whatever sits between two separate pairs, which
+  isn't guaranteed to be valid GRUB script on its own. Now uses only
+  the first complete pair — always a self-contained unit exactly as
+  `grub-mkconfig` generated it — and logs a warning that the rest is
+  ignored, instead of merging it in.
 ### Added
-- **Documented workaround for installing the Ubuntu/Asahi source base
-  on Ubuntu 24.04 LTS**: the stable installer published on
-  `ubuntuasahi.org` resolves its installable-release list from a JSON
-  file that, as of this writing, doesn't list 24.04 LTS. Tracing the
-  installer's own source turned up the maintainer's **beta** channel,
-  whose release JSON does include 24.04 LTS (`curl -sL
-  https://files3.tobhe.de/ubuntu/install-beta | sh`). Documented in
-  `docs/OPERATING_SYSTEMS.md`, with the usual `curl | sh` caution
-  (inspect before piping to `sh`) and a note that it only affects how
-  the source base itself is installed — nothing in `lib/os_catalog.sh`
-  or `steps/*.sh` changes.
-- **Internal disk partitioning guidance for both source bases**: 90 GB
-  combined (60 GB Ubuntu Desktop 24.04 + 30 GB minimal Debian),
-  validated on real MacBook Air M1/M2 hardware. Added to
-  `docs/OPERATING_SYSTEMS.md` and referenced from `docs/USAGE.md`.
-- **README "Step-by-step video walkthroughs" table**: new first entry
-  covering internal disk partition preparation, ahead of the Debian/
-  Asahi and Ubuntu/Asahi install videos and the four conversion videos
-  (Kali, Parrot, SIFT, REMnux).
-
-## [1.0.0] - 2026-09-13
+- **Step 06 also applies `/base_inst_kali/preparation/locale` inside
+  the chroot** (system-wide `LANG`, distinct from the keyboard layout):
+  runs `locale-gen`/`update-locale` and installs the matching
+  `language-pack-gnome-<code>` so the GNOME UI itself is translated,
+  not just `LC_*` categories. Same file-based mechanism as
+  `preparation/keyboard`; never ran on Ubuntu/Asahi before since step
+  01 skips it there.
+- **Step 07 also forces `GRUB_RECORDFAIL_TIMEOUT=10`**: found on real
+  hardware that `GRUB_TIMEOUT_STYLE=menu`/`GRUB_TIMEOUT=10` alone
+  weren't enough — Ubuntu's own `/etc/grub.d/00_header` checks GRUB's
+  `recordfail` variable at boot and forces `timeout=0` anyway on a
+  successful previous boot, unless `GRUB_RECORDFAIL_TIMEOUT` is also
+  set. Without it the menu never actually waited.
+- **`hold_graphics_kernel_packages`/`unhold_packages` (`lib/common.sh`)**,
+  used by step 09 around both `cast install teamdfir/sift-saltstack`
+  (target `sift`) and `install_remnux_arm64` (target `remnux`): found
+  on real hardware that SIFT's and REMnux's own SaltStack provisioning
+  add their own apt repositories and can silently upgrade
+  already-installed packages (mesa, gnome-shell) to versions expecting
+  a newer kernel than the one left in place, breaking the graphical
+  session on reboot — the same class of mismatch as the step 08
+  `full-upgrade` issue below, but triggered from inside third-party
+  provisioning this time, not from any upgrade command this installer
+  runs itself. Holds only the kernel/GPU-userspace family (kernel
+  image/headers/modules, `ubuntu-asahi`, Mesa, the display
+  manager/compositor, Xorg/Wayland) — an earlier version held every
+  installed package, which broke SIFT's own dependency resolution
+  instead (`held broken packages`, 140/846 salt states failed). See
+  docs/TROUBLESHOOTING.md.
+- **`sift` and `remnux` as separate catalog targets**, each with its
+  own partitions, LVM volume group (`vgsift`, `vgremnux`) and LUKS
+  container, so both can be installed side by side on the same
+  external disk as fully independent, separately bootable systems —
+  was a real limitation reported after testing, since SIFT and REMnux
+  used to be `confirm_yes_no` sub-options of a single `ubuntu` install
+  and could only ever land in the same volume group. There is
+  deliberately no plain "ubuntu" target: this installer only cares
+  about Ubuntu as a forensics base, so `sift`/`remnux` are the only two
+  Ubuntu-sourced ids in the catalogue (a brief intermediate design kept
+  `ubuntu`/`ubuntu_sift`/`ubuntu_remnux` as three ids — dropped in favor
+  of this simpler two-id naming before release). Step 09 installs
+  SIFT/REMnux unconditionally for their respective id (choosing the
+  target already is the decision, no separate prompt); step 08 treats
+  both identically (no repos, no upgrade). See
+  docs/OPERATING_SYSTEMS.md for the full model.
+- **`remnux`/`malware` demo account**: step 09's Ubuntu branch now
+  creates a `remnux` user (sudo group) with REMnux's own well-known
+  public demo password `malware` right before installing it — matching
+  REMnux's upstream convention, since the vendored scripts themselves
+  don't create this account. Documented with an explicit security
+  warning (README.md, `forensics/README.md`) since this is a public
+  repository.
+- **New optional step `07b_grub_cross_merge.sh`**: after merging an OS's
+  native GRUB entry into its own host's `grub.cfg` (step 07), this lets
+  you also drop a small `/etc/grub.d/` chainload script onto the
+  *sibling* internal base (Debian/Asahi <-> Ubuntu/Asahi), so its boot
+  menu offers an entry that `configfile`-loads this host's live
+  `grub.cfg`. No menuentry text is duplicated, so it survives future
+  `update-grub` runs (new kernels, new OS merges) on either side without
+  re-syncing anything by hand. Marked as a `NO_GATE_STEPS` entry: it
+  never blocks progression to step 08, and can be run at any point
+  after 07.
+- Documented, in `docs/ARCHITECTURE.md`, why the internal disk ends up
+  with **two independent GRUB installations** (one per internal base),
+  not a single unified menu — and how `07b` bridges them without
+  duplicating boot logic.
+### Investigated
+- Reviewed the SIFT Workstation install path (step 09, Ubuntu target):
+  confirmed `cryptodisk`/`luks`(1)/`lvm` GRUB modules ship by default on
+  a stock Ubuntu/Asahi install, which is what makes `07b`'s chainload
+  entries actually bootable without installing any extra GRUB module on
+  either internal base.
 ### Changed
+- **Step 08's Ubuntu branch no longer runs any upgrade at all**
+  (reverting the earlier kernel/`ubuntu-asahi` hold approach): on real
+  hardware, letting everything else fully upgrade while holding back
+  the kernel desynced it from its GPU userspace stack
+  (mesa-vulkan-drivers, gnome-shell, xorg — all version-coupled to the
+  kernel on Ubuntu/Asahi), breaking the graphical session on reboot
+  (console only, no GDM/GNOME). The clone already has a self-consistent
+  kernel+userspace combination from the source boot; step 08 now just
+  runs `apt update` and leaves packages untouched, same philosophy as
+  step 01. Any system upgrade is left to the user, and should be a full
+  one (kernel included) if attempted, not a partial one.
+- **Step 07 now forces `GRUB_TIMEOUT_STYLE=menu` and `GRUB_TIMEOUT=10`**
+  in `/etc/default/grub`: Ubuntu ships with the menu hidden and a 0s
+  timeout by default, which on real hardware meant the merged external
+  entry was never actually reachable — GRUB just boots straight through
+  with no way to pick it. Overrides whatever `preparation/grub` (if
+  used) set too, since the whole point of merging in an entry is being
+  able to select it.
+- **Step 03 now resets steps 04-09's recorded status for the target OS**
+  before reformatting: found on real hardware that reformatting/
+  recloning left stale "done" flags from a previous attempt, letting
+  the menu jump straight to 07b/08/09 without 04-07 ever touching the
+  fresh clone.
+- **Fixed physical-disk resolution (`resolve_physical_disk`, new in
+  `lib/common.sh`) for roots on LVM/LUKS**: a single `lsblk -no PKNAME`
+  lookup only returns the immediate parent, which for an LVM root is
+  the underlying PV/crypt device, not the physical disk — this broke
+  `07b`'s internal-disk detection (and silently no-opped step 00's
+  internal-disk exclusion) whenever the booted system's own root uses
+  LVM. Now walks the full parent chain. `07b` also now detects and
+  refuses to run if it resolves to the external `TARGET_DISK` itself
+  (a sign of being booted from the external clone, not the internal
+  host).
+- **Step 06 now also applies `/base_inst_kali/preparation/keyboard`
+  inside the chroot**, before the first `update-initramfs`: the LUKS
+  passphrase prompt actually seen at boot comes from the initramfs's
+  own cryptsetup hook (crypttab-driven), not GRUB — `/boot` itself
+  isn't encrypted, so GRUB never needs to decrypt anything and its own
+  keymap (step 07's fix) never actually applied to this prompt. This
+  chroot-side copy is what actually fixes it.
+- **`01a` no longer listed in the menu when booted into Ubuntu/Asahi**:
+  it always self-skips there (see its own note), so showing it added
+  nothing.
+- **Step 07 now also applies `/base_inst_kali/preparation/keyboard`**
+  (if present) before deriving the layout for the GRUB keymap below,
+  and always regenerates that keymap script on every run instead of
+  only when absent: Ubuntu/Asahi's own install can leave
+  `/etc/default/keyboard` at `XKBLAYOUT="us"`, and step 01 deliberately
+  skips this file on Ubuntu/Asahi, so this was the first — and, being
+  skip-if-exists before, the only — point where it could take effect,
+  even after fixing the file.
+- **Step 07 now installs a GRUB keymap for the host**, compiled from
+  its own `/etc/default/keyboard` (`XKBLAYOUT`) via `grub-kbdcomp`, as
+  a small `/etc/grub.d/05_iac_keymap` script: GRUB's own text prompts
+  — including the LUKS passphrase asked by `cryptomount` for the
+  merged entry — default to a raw US-like layout otherwise, regardless
+  of the OS's own configured layout, which made typing a non-US
+  passphrase unreliable. Skipped with a warning if `XKBLAYOUT` can't be
+  resolved or `grub-kbdcomp` fails; existing US behavior is unaffected.
+- **Step 05 also pauses 5 seconds right after mounting root**, before
+  mounting boot/efi and the pseudo-filesystems (sysfs, efivarfs, proc,
+  dev binds) on top of it: those were failing intermittently on real
+  hardware with no pause in between.
+- **Steps 03, 04 and 05 now pause 5 seconds right after `cryptsetup
+  open` (luksOpen), before touching the resulting device-mapper node**:
+  on real hardware, mounting or running `pvcreate`/`mkfs` on
+  `/dev/mapper/<cryptname>` immediately after opening it could race
+  udev, which hasn't finished settling the new node yet.
+- **`07b_grub_cross_merge.sh`'s partition scan fixed**: `lsblk -no NAME`
+  defaults to tree-formatted output (`├─nvme0n1p1`), which broke every
+  `/dev/${part}` device path built from it and made the sibling-base
+  search silently skip every partition ("Could not find a debian/ubuntu
+  root partition..." even when one existed). Now uses `-lno NAME`
+  (list mode) for plain names.
+- **Step 08's Ubuntu branch also holds `ubuntu-asahi` itself** before
+  the full-upgrade, not just the `linux-*` kernel packages: on real
+  hardware, holding only the kernel packages wasn't enough, because
+  `ubuntu-asahi`'s own upgrade directly depends on a specific new
+  kernel version and pulled it in anyway, hitting the same Launchpad
+  #2148348 bug the earlier hold was meant to avoid.
+- **Step 07 no longer breaks when the cloned system's `grub.cfg` has
+  more than one `BEGIN`/`END /etc/grub.d/10_linux` marker pair**, seen
+  on real hardware (Ubuntu target): `awk` returned multiple line
+  numbers, which broke the `a2=$((a1+1))` arithmetic outright
+  (`syntax error in expression`, then `a2: unbound variable`). Now
+  takes the first `BEGIN` and the last `END` found, covering every
+  10_linux block regardless of how many there are, and logs a warning
+  if more than one pair was found instead of failing silently on the
+  wrong assumption.
+- **Step 03 now checks that the target EFI/boot/root partitions aren't
+  currently mounted before formatting them**, and unmounts them first
+  if they are (e.g. a previous partial run, or the desktop's automount
+  service picking up a partition it recognizes on the external disk).
+  It also detects and tears down a leftover LUKS mapping (with its LVs)
+  from a previous run for the same OS, so `luksFormat` doesn't fail
+  with "device is mounted/busy".
+- **Steps 01 and 01a skip locale/keyboard configuration and WiFi setup
+  entirely when booted into Ubuntu/Asahi**: that base already has both
+  configured from its own separate install. Debian/Asahi's behavior is
+  unchanged. `01a` now exits immediately (marked done) on Ubuntu/Asahi
+  without prompting for any WiFi credentials.
+- **Step 08's Ubuntu branch now holds the currently-installed kernel
+  package(s) around its `apt full-upgrade -y`**, releasing them again
+  right after: same Launchpad #2148348 exposure as step 01 (this runs
+  on the same Ubuntu/noble clone), but here the upgrade itself is the
+  point of the step, so instead of skipping it we just pin the kernel
+  in place so apt can't pull a newer, possibly-broken one while still
+  upgrading everything else. Kali/Parrot's `dist-upgrade` in the same
+  file are untouched — different kernel packaging family, no evidence
+  they're affected by this bug.
+- **Step 01 no longer runs a blanket `apt upgrade -y` when booted into
+  Ubuntu/Asahi**: only installs the specific packages this installer
+  needs there. Found on real hardware: the unconditional full-system
+  upgrade pulled in a kernel package hit by a confirmed, currently open
+  Ubuntu bug (Launchpad #2148348 — 7.0.x kernel maintainer scripts call
+  `run-parts` with two directories at once, which fails with
+  `run-parts: missing operand` on noble), leaving dpkg half-configured.
+  Documented the symptom and recovery steps in
+  `docs/TROUBLESHOOTING.md`. Debian/Asahi's behavior is unchanged.
+- **Step 01 (base preparation) now skips the root password reset and
+  the `iac` user creation/password prompt when booted into Ubuntu/Asahi**:
+  that base already has its own login from its own separate install, so
+  re-prompting for both was redundant. Debian/Asahi's behavior is
+  unchanged. Package installation, locale/keyboard configuration still
+  run for both bases.
 - **Project renamed and moved to its definitive repository**:
   `offensive-forensic-distros-installer-macbook-air-M1-M2-external-disk-luks`,
   merging `offensive-installer-silicon-chip` and the vendored

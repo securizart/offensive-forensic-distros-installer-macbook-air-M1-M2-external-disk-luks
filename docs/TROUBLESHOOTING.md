@@ -223,3 +223,112 @@ curl -fsSL -o /dev/null -w '%{url_effective}\n' https://github.com/ekristen/cast
 
 If this doesn't return a URL with `/releases/tag/vX.Y.Z`, the problem
 is network/DNS/firewall related, not the script.
+
+## Step 01 fails on Ubuntu/Asahi: `run-parts: missing operand` / kernel package half-configured
+
+Symptom, during `apt upgrade`/`apt install` (step 01):
+
+```
+Processing triggers for linux-image-7.0.0-1001-asahi-arm (7.0.0-1001.1)…
+run-parts: missing operand
+Try `run-parts --help' for more information.
+dpkg: error processing package linux-image-7.0.0-1001-asahi-arm (--configure):
+ installed linux-image-7.0.0-1001-asahi-arm package post-installation script subprocess returned error exit status 1
+```
+
+This is a **confirmed, open Ubuntu kernel-packaging bug**
+([Launchpad #2148348](https://bugs.launchpad.net/ubuntu/+source/linux/+bug/2148348)),
+not something wrong with this installer or your hardware: the 7.0.x
+kernel package's maintainer scripts call `run-parts` with two hook
+directories at once (`/etc/kernel/postinst.d` and
+`/usr/share/kernel/postinst.d`), but the `run-parts` shipped with
+Ubuntu 24.04 (noble) only accepts one directory per call and aborts.
+Ubuntu/Asahi inherits it because its kernel tracks that same 7.0.x
+series. Step 01 (since this version) no longer forces a blanket
+`apt upgrade -y` on Ubuntu/Asahi for this reason — but if you already
+hit this before that change, or triggered a kernel upgrade some other
+way, dpkg is left with that kernel package half-configured and every
+further `apt`/`dpkg` call will fail the same way until it's resolved.
+
+**To recover**, on the affected Ubuntu/Asahi (adjust the version
+numbers to whatever your `dpkg -l | grep linux-image` shows):
+
+```bash
+# 1) Stop apt from retrying the broken kernel package version
+sudo apt-mark hold linux-image-7.0.0-1001-asahi-arm linux-image-asahi-arm \
+    linux-headers-7.0.0-1001-asahi-arm linux-headers-asahi-arm \
+    linux-asahi-arm-headers-7.0.0-1001
+
+# 2) Confirm your previously-working kernel is still installed and was
+#    the one you actually booted
+uname -r
+dpkg -l | grep linux-image
+
+# 3) Remove the half-configured new kernel package instead of forcing
+#    it to finish configuring (it never will, until Ubuntu fixes the
+#    bug upstream)
+sudo apt-get remove --purge linux-image-7.0.0-1001-asahi-arm linux-headers-7.0.0-1001-asahi-arm
+sudo dpkg --configure -a
+sudo apt-get install -f
+```
+
+If step 3's `remove --purge` itself fails on the same `run-parts`
+error (it runs the same broken postrm trigger), force it without
+running that trigger instead:
+
+```bash
+sudo dpkg --remove --force-remove-reinstreq linux-image-7.0.0-1001-asahi-arm
+sudo dpkg --configure -a
+```
+
+Re-run step 01 once `dpkg -l | grep ^..r` (broken/half-configured
+packages) comes back empty.
+
+## Graphical session breaks after step 09 (SIFT or REMnux), kernel unchanged
+
+Symptom: `uname -r` still shows the same kernel step 08 left in place
+(e.g. `6.11.0-1001-asahi-arm`), but after step 09 finishes and reboots,
+the graphical session doesn't start (console only, no GDM/GNOME) — the
+same symptom as the step 08 `apt full-upgrade` mismatch described
+above, but this time with no `apt upgrade`/`full-upgrade`/`dist-upgrade`
+run by this installer's own code anywhere in step 08 or 09.
+
+The cause is the same class of problem, triggered from a different
+place: SIFT's own SaltStack states (`teamdfir/sift-saltstack`, applied
+via `cast install`) and REMnux's own `remnux.addon` run both add
+several apt repositories of their own (`gift`, `sift`, `openjdk`,
+`dotnet-backports`, Microsoft's repo, REMnux's own PPA) as part of
+provisioning. Refreshing package lists against those new repositories
+can pull in newer versions of already-installed packages — including
+`mesa-vulkan-drivers`, `gnome-shell`, and other pieces of the GPU
+userspace stack that are version-coupled to the kernel on Ubuntu/Asahi
+(see the step 08 section above) — as a side effect of SIFT/REMnux's own
+provisioning logic, not from any `apt upgrade` this installer runs
+itself.
+
+Step 09 holds the kernel/GPU-userspace family (`apt-mark hold`) around
+both `cast install teamdfir/sift-saltstack` and REMnux's
+`install_remnux_arm64`, releasing the hold again right after —
+specifically the kernel image/headers/modules, `ubuntu-asahi` itself,
+Mesa, the display manager/compositor, and Xorg/Wayland
+(`hold_graphics_kernel_packages` in `lib/common.sh`). This blocks
+SIFT/REMnux's provisioning from silently upgrading the pieces that
+actually caused the graphical session to break; everything else,
+including genuinely new packages they install, is unaffected.
+
+**This used to hold every currently-installed package**, not just this
+family — found on real hardware that this was too broad: SIFT's own
+SaltStack states couldn't resolve their own package dependencies
+anymore (`E: Unable to correct problems, you have held broken
+packages.`, 140 of 846 salt states failing, starting with
+`sift.packages.g++`), because a hold blocks upgrading a shared
+dependency too, not just the packages you actually care about. Narrowed
+to the specific family above for that reason. If you still hit a
+similar "held broken packages" error with the narrower list, that
+specific package needs something in the held family — check which one
+in the log and, if you're confident it's safe, `apt-mark unhold
+<package>` by hand before retrying step 09.
+
+If you're on an older run from before this guard existed and already
+hit this, the recovery is the same as for the step 08 case: reboot into
+the internal Ubuntu/Asahi and redo the clone from step 03 onward.
