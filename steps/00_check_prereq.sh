@@ -91,6 +91,43 @@ state_set TARGET_DISK "$TARGET_DISK"
 log_info "$(t step00_target_disk_confirmed "$TARGET_DISK")"
 echo "$(t step00_target_disk_confirmed "$TARGET_DISK")"
 
+# --- stable identifier for the target disk --------------------------------
+# /dev/sdX is NOT stable across reboots on a Mac with several USB/
+# Thunderbolt disks attached — the kernel can hand the same letter to a
+# different physical disk depending on enumeration order at boot. Save
+# a stable identifier now so later steps (which run across several
+# reboots) can re-resolve the CORRECT disk via get_target_disk()
+# (lib/state.sh) instead of trusting a /dev/sdX name that may no longer
+# point at it. Prefers a /dev/disk/by-id/ symlink; falls back to the
+# GPT PTUUID if the disk has no partition table yet (step 02 backfills
+# it once sgdisk creates one).
+DISK_REAL_PATH="$(readlink -f "$TARGET_DISK")"
+TARGET_DISK_ID=""
+if [ -d /dev/disk/by-id ]; then
+    for link in /dev/disk/by-id/*; do
+        [ -e "$link" ] || continue
+        case "$(basename "$link")" in
+            *-part[0-9]*) continue ;;
+        esac
+        if [ "$(readlink -f "$link")" = "$DISK_REAL_PATH" ]; then
+            TARGET_DISK_ID="$link"
+            break
+        fi
+    done
+fi
+if [ -z "$TARGET_DISK_ID" ]; then
+    PTUUID="$(blkid -s PTUUID -o value "$TARGET_DISK" 2>/dev/null || true)"
+    if [ -n "$PTUUID" ]; then
+        TARGET_DISK_ID="PTUUID:${PTUUID}"
+    fi
+fi
+if [ -n "$TARGET_DISK_ID" ]; then
+    state_set TARGET_DISK_ID "$TARGET_DISK_ID"
+    log_info "Stable disk identifier saved: $TARGET_DISK_ID (resolves to $TARGET_DISK right now)."
+else
+    log_warn "Could not derive a stable identifier for $TARGET_DISK yet (no by-id symlink, no partition table). Step 02 will save one once it creates the partition table."
+fi
+
 # --- booted base, saved for the "Operating systems" menu to filter on ---
 BOOTED_BASE="$(detect_booted_base)"
 if [ -n "$BOOTED_BASE" ]; then

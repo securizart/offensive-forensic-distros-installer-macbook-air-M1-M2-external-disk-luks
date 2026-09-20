@@ -174,6 +174,63 @@ unhold_packages() {
     fi
 }
 
+# ensure_apt_repos_sane
+# Idempotent repo sanity check, meant to run at the START of any step
+# that installs third-party packages (steps/09) — including on a
+# RETRY after a previous failed attempt, when the damage described
+# below may already be present.
+#
+# Confirmed failure mode: WineHQ (installed as part of REMnux/SIFT's
+# own package set) registers the i386 architecture system-wide
+# (`dpkg --add-architecture i386`). This base's own repos
+# (ports.ubuntu.com, used because this is arm64) never serve i386
+# packages at all — once i386 is registered, EVERY subsequent
+# `apt update`/`apt install`, system-wide, tries to fetch i386 indices
+# from ports.ubuntu.com and gets a 404, which apt treats as a hard
+# error ("Some index files failed to download"). This breaks the very
+# same step's own later `apt install` calls if it's retried, and any
+# unrelated `apt` use afterward.
+#
+# Fix: restrict ports.ubuntu.com's own entries to arch=arm64
+# (Architectures: arm64 in the deb822 sources file, or [arch=arm64] in
+# the legacy sources.list), and add a working i386 mirror
+# (archive.ubuntu.com/security.ubuntu.com, which DOES serve i386) for
+# whenever i386 actually is needed. Safe to run whether i386 has been
+# registered yet or not, and whether this has already been applied.
+ensure_apt_repos_sane() {
+    local ubuntu_sources="/etc/apt/sources.list.d/ubuntu.sources"
+    local legacy_sources="/etc/apt/sources.list"
+    local i386_mirror="/etc/apt/sources.list.d/i386-archive.list"
+    local changed=0
+
+    if [ -f "$ubuntu_sources" ] && grep -q "ports\.ubuntu\.com" "$ubuntu_sources" \
+       && ! grep -q "^Architectures: arm64" "$ubuntu_sources"; then
+        log_info "Restricting ports.ubuntu.com to arm64 in ${ubuntu_sources} (prevents i386 404s once i386 gets registered by third-party packages like WineHQ)."
+        sed -i '/^Signed-By: \/usr\/share\/keyrings\/ubuntu-archive-keyring.gpg$/a Architectures: arm64' "$ubuntu_sources"
+        changed=1
+    fi
+
+    if [ -f "$legacy_sources" ] && grep -qE "^deb http://ports\.ubuntu\.com/ubuntu-ports" "$legacy_sources"; then
+        log_info "Restricting ports.ubuntu.com to arm64 in ${legacy_sources}."
+        sed -i -E 's#^deb (http://ports\.ubuntu\.com/ubuntu-ports)#deb [arch=arm64] \1#' "$legacy_sources"
+        changed=1
+    fi
+
+    if [ ! -f "$i386_mirror" ]; then
+        log_info "Adding an i386-capable mirror (archive.ubuntu.com/security.ubuntu.com) for whenever third-party packages (e.g. WineHQ) register the i386 architecture — ports.ubuntu.com never serves it."
+        cat > "$i386_mirror" << 'I386_MIRROR_EOF'
+deb [arch=i386] http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse
+deb [arch=i386] http://archive.ubuntu.com/ubuntu noble-updates main restricted universe multiverse
+deb [arch=i386] http://security.ubuntu.com/ubuntu noble-security main restricted universe multiverse
+I386_MIRROR_EOF
+        changed=1
+    fi
+
+    if [ "$changed" -eq 1 ]; then
+        run_cmd "apt update (repo sanity check)" apt update
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # User interaction
 # ---------------------------------------------------------------------------
@@ -275,10 +332,44 @@ install_cast_arm64() {
 # Returns 0 if the whole install+cleanup+verify sequence ran (even if
 # verify.sh reports individual issues, which it logs on its own), 1 if a
 # hard prerequisite (git, cast, or the vendored scripts) is missing.
+# install_remnux_arm64
+# Installs REMnux on Ubuntu/Asahi (arm64), targeting the dedicated
+# "remnux" system user (created in steps/09's remnux) branch) rather
+# than root.
+#
+# Uses forensics/remnux/remnux-installer.sh, a single consolidated
+# script (fuses the old install.sh + cleanup.sh + verify.sh +
+# install-extra-tools.sh) validated end-to-end on the forensics
+# satellite project. Key findings that shape this function:
+#
+#   - `cast install remnux/salt-states` does NOT just clone the repo:
+#     it applies the full `remnux.dedicated` state itself (desktop/
+#     GNOME theme included), taking ~20-30 min on its own. Calling
+#     remnux-installer.sh's own --base phase afterwards (a separate
+#     `state.apply remnux.addon`) is redundant, so it's not used here.
+#   - remnux-installer.sh assumes it runs AS the target desktop user:
+#     it reads $HOME throughout, and critically writes the --menu
+#     phase's .desktop launchers to $HOME/.local/share/applications.
+#     Running it as root (this function's caller runs the whole step
+#     as root) would silently put all of that under /root instead of
+#     /home/remnux — invisible to the "remnux" user's GNOME session,
+#     and the reason desktop shortcuts never appeared before. Every
+#     REMnux-specific command below runs via `sudo -u remnux -i --`.
+#
+# Returns 0 if the sequence ran (individual tool failures inside
+# remnux-installer.sh are expected — see its own success framing), 1 if
+# a hard prerequisite (git, cast, the vendored script, or the "remnux"
+# user itself) is missing.
 install_remnux_arm64() {
     local remnux_dir="${BASE_DIR}/forensics/remnux"
-    if [ ! -f "${remnux_dir}/install.sh" ]; then
-        log_error "forensics/remnux/install.sh not found under ${BASE_DIR}. REMnux install skipped."
+    local installer="${remnux_dir}/remnux-installer.sh"
+
+    if [ ! -f "$installer" ]; then
+        log_error "forensics/remnux/remnux-installer.sh not found under ${BASE_DIR}. REMnux install skipped."
+        return 1
+    fi
+    if ! id remnux >/dev/null 2>&1; then
+        log_error "System user 'remnux' does not exist yet. REMnux install skipped."
         return 1
     fi
 
@@ -297,24 +388,61 @@ install_remnux_arm64() {
         }
     fi
 
-    log_info "Cloning/updating remnux/salt-states via cast..."
-    run_cmd "cast install remnux/salt-states" cast install remnux/salt-states
+    chmod +x "$installer" 2>/dev/null || true
 
-    chmod +x "${remnux_dir}"/*.sh 2>/dev/null || true
+    # This function stays as root throughout (never drops to the remnux
+    # uid — see the HOME/USER/SUDO_USER override below instead), so any
+    # directory under /home/remnux left owned by 'remnux' from a
+    # previous run (e.g. remnux-installer.sh's --extra phase cloning
+    # tools via git) trips git's "dubious ownership" safety check on a
+    # re-run: the real process uid (root) doesn't match the directory
+    # owner. Trust everything under /home/remnux explicitly so re-runs
+    # don't get benign-but-noisy git warnings.
+    mkdir -p /home/remnux
+    git config -f /home/remnux/.gitconfig --add safe.directory '*' 2>/dev/null || true
+    chown remnux:remnux /home/remnux/.gitconfig 2>/dev/null || true
 
-    log_info "Running forensics/remnux/install.sh (full remnux.addon run, ~20 min, ~88% success expected)..."
-    run_cmd "remnux install.sh" bash "${remnux_dir}/install.sh"
+    log_info "Running 'cast install remnux/salt-states' with HOME=/home/remnux (applies the full dedicated state — this is the ~20-30 min step, not a plain git clone)..."
+    # SUDO_USER=remnux is the critical one here, not USER/LOGNAME: cast's
+    # own .cast.yml declares `remnux_user_template: "{{ .User }}"`, and
+    # cast resolves that .User via $SUDO_USER (whoever originally ran
+    # 'sudo' at the top of this whole install), NOT via $USER/$LOGNAME.
+    # Left unset/inherited, $SUDO_USER stays whatever it was when the
+    # user first launched install.sh (e.g. 'iac') several steps back,
+    # and every per-user file this pillar drives (desktop theme,
+    # autostart entries, .desktop shortcuts) silently lands in THAT
+    # user's home instead of /home/remnux — confirmed directly from a
+    # real saltstack.log run, where every remnux-gnome-config-* state
+    # wrote to /home/iac/.config/... with user: iac.
+    run_cmd "cast install remnux/salt-states" \
+        env HOME=/home/remnux USER=remnux LOGNAME=remnux SUDO_USER=remnux cast install remnux/salt-states
 
-    log_info "Running forensics/remnux/cleanup.sh (removing broken x86-64 binaries)..."
-    run_cmd "remnux cleanup.sh" bash "${remnux_dir}/cleanup.sh"
+    log_info "Running remnux-installer.sh --cleanup --verify --extra --partial --menu with HOME=/home/remnux (no --base: cast install already applied the dedicated state above)..."
+    run_cmd "remnux-installer.sh" \
+        env HOME=/home/remnux USER=remnux LOGNAME=remnux SUDO_USER=remnux bash "$installer" --cleanup --verify --extra --partial --menu
+    local rc=$?
+    chown -R remnux:remnux /home/remnux 2>/dev/null || true
 
-    log_info "Running forensics/remnux/verify.sh (confirming the result and installing native arm64 alternatives)..."
-    bash "${remnux_dir}/verify.sh"
-    local verify_rc=$?
-    if [ "$verify_rc" -eq 0 ]; then
-        log_ok "REMnux install+cleanup+verify completed with no outstanding issues."
+    # REMnux's own remnux.config.display state (Ubuntu 24.04/"noble"
+    # only) appends MUTTER_DEBUG_FORCE_KMS_MODE=simple to
+    # /etc/environment as a VMware/GNOME display accommodation. On real
+    # Apple Silicon hardware (Asahi's GPU driver, not VMware's), that
+    # same forced KMS mode is what breaks the hardware cursor plane
+    # under Wayland, leaving the mouse pointer completely invisible
+    # system-wide (confirmed: happens in every session, iac and remnux
+    # alike, only after REMnux installs — never on plain Ubuntu or
+    # SIFT, which don't carry this state at all). Strip just that one
+    # line; NO_AT_BRIDGE=1 (the other line REMnux adds) is harmless and
+    # left in place.
+    if grep -q '^MUTTER_DEBUG_FORCE_KMS_MODE=' /etc/environment 2>/dev/null; then
+        log_info "Removing REMnux's MUTTER_DEBUG_FORCE_KMS_MODE=simple from /etc/environment (VMware-only accommodation that breaks the hardware cursor on real Asahi/Apple Silicon GPUs)."
+        sed -i '/^MUTTER_DEBUG_FORCE_KMS_MODE=/d' /etc/environment
+    fi
+
+    if [ "$rc" -eq 0 ]; then
+        log_ok "REMnux install (remnux-installer.sh) completed with no outstanding issues from --verify."
     else
-        log_warn "REMnux verify.sh reported outstanding issues (exit $verify_rc) — check ${STEP_LOG} for detail. This can be expected (e.g. cutter has no confirmed native alternative yet)."
+        log_warn "remnux-installer.sh reported outstanding issues (exit $rc) — check ${STEP_LOG} for detail. This can be expected (e.g. cutter has no confirmed fix, or inspircd downgrade was skipped without a TTY to confirm it)."
     fi
     return 0
 }

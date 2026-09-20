@@ -23,12 +23,11 @@ if [ -z "$TARGET_OS" ]; then
     echo "No active operating system. Pick one first from the menu."
     exit 1
 fi
-TARGET_DISK="$(state_get TARGET_DISK)"
-if [ -z "$TARGET_DISK" ] || [ ! -b "$TARGET_DISK" ]; then
-    log_error "TARGET_DISK is not set or invalid (run step 00 first)."
-    echo "TARGET_DISK is not set or invalid. Run step 00 first."
+TARGET_DISK="$(get_target_disk)" || {
+    log_error "TARGET_DISK is not set or invalid, or the previously selected disk could not be re-identified after a reboot (run step 00 first)."
+    echo "TARGET_DISK is not set or invalid, or the disk could not be re-identified. Run step 00 first, or check 'lsblk' against TARGET_DISK_ID in /var/lib/base_inst_kali/state.conf."
     exit 1
-fi
+}
 
 # Blocking check: the currently booted system must be the correct source
 # base for $TARGET_OS (e.g. Debian/Asahi for Kali/Parrot, Ubuntu/Asahi for
@@ -72,6 +71,19 @@ run_cmd "sgdisk new root" sgdisk --new=${PART_ROOT}:0:+87G "$TARGET_DISK"
 run_cmd "sgdisk typecode" sgdisk --typecode=${PART_EFI}:ef00 --typecode=${PART_BOOT}:8301 --typecode=${PART_ROOT}:8301 "$TARGET_DISK"
 run_cmd "sgdisk change-name" sgdisk --change-name=${PART_EFI}:${EFI_LABEL} --change-name=${PART_BOOT}:${BOOT_LABEL} --change-name=${PART_ROOT}:${ROOT_LABEL} "$TARGET_DISK"
 run_cmd "sgdisk hybrid" sgdisk --hybrid ${PART_EFI}:${PART_BOOT}:${PART_ROOT} "$TARGET_DISK"
+
+# If step 00 couldn't derive a stable TARGET_DISK_ID yet (disk had no
+# partition table then), this is the first point one is guaranteed to
+# exist — sgdisk just wrote a fresh GPT table. Backfill it now so steps
+# 03-05 can re-resolve this disk correctly even if the kernel renames
+# /dev/sdX after this step's reboot.
+if [ -z "$(state_get TARGET_DISK_ID)" ]; then
+    PTUUID="$(blkid -s PTUUID -o value "$TARGET_DISK" 2>/dev/null || true)"
+    if [ -n "$PTUUID" ]; then
+        state_set TARGET_DISK_ID "PTUUID:${PTUUID}"
+        log_info "Backfilled stable disk identifier after partitioning: PTUUID:${PTUUID}"
+    fi
+fi
 
 os_list_add "$TARGET_OS"
 mark_os_step_done "$TARGET_OS" "$STEP_ID"

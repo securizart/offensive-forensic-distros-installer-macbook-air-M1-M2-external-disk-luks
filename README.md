@@ -265,6 +265,20 @@ Ubuntu/Asahi, the LUKS/GRUB setup, and the cross-link (step 07b) with
 a Debian/Asahi base already holding Kali/Parrot on the same external
 disk.
 
+### REMnux desktop theme, shortcuts and stability fixes (v1.5.0)
+
+[![Demo: REMnux desktop theme, shortcuts, and installer robustness fixes on Apple Silicon](https://img.youtube.com/vi/joXskLcvx40/hqdefault.jpg)](https://youtu.be/joXskLcvx40)
+
+▶️ **[Watch on YouTube](https://youtu.be/joXskLcvx40)**
+
+Closes out the `remnux` target from v1.4.0: the desktop theme,
+wallpaper and `.desktop` shortcuts now land correctly in the `remnux`
+user's own home directory instead of the account that launched the
+installer, the invisible-cursor issue on real Apple Silicon GPUs is
+fixed automatically, and the external-disk/LUKS/LVM steps are hardened
+against reboots reassigning `/dev/sdX` and against retries after a
+failed attempt.
+
 ## Roadmap
 
 - ~~Ubuntu as a base for forensic targets~~ — **implemented**:

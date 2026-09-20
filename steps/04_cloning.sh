@@ -13,7 +13,7 @@ init_step_log "$STEP_ID"
 require_root
 
 TARGET_OS="$(state_get ACTIVE_OS)"
-TARGET_DISK="$(state_get TARGET_DISK)"
+TARGET_DISK="$(get_target_disk)" || TARGET_DISK=""
 PART_EFI="$(os_state_get "$TARGET_OS" PART_EFI)"
 PART_BOOT="$(os_state_get "$TARGET_OS" PART_BOOT)"
 PART_ROOT="$(os_state_get "$TARGET_OS" PART_ROOT)"
@@ -37,7 +37,16 @@ echo
 
 [ -e "/dev/mapper/${CRYPTNAME}" ] || run_cmd "luksOpen" cryptsetup open "${TARGET_DISK}${PART_ROOT}" "$CRYPTNAME"
 echo "$(t generic_waiting_device_settle)"
-sleep 5
+run_cmd "vgchange activate $VG" vgchange -ay "$VG" 2>/dev/null || true
+WAIT=0
+while [ ! -e "/dev/mapper/${VG}-root" ] && [ "$WAIT" -lt 30 ]; do
+    sleep 1
+    WAIT=$((WAIT+1))
+done
+if [ ! -e "/dev/mapper/${VG}-root" ]; then
+    log_error "/dev/mapper/${VG}-root did not appear after ${WAIT}s of LVM activation on top of $CRYPTNAME. Check 'vgs'/'lvs' manually before retrying."
+    exit 1
+fi
 
 mkdir -p /part "$MNT"
 

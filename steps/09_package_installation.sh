@@ -12,6 +12,14 @@ CURRENT_STEP_ID="$STEP_ID"
 init_step_log "$STEP_ID"
 require_root
 
+# Idempotent, run every time step 09 starts — including on a retry
+# after a previous failed attempt, when i386 may already be registered
+# and the repos already broken (see ensure_apt_repos_sane in
+# lib/common.sh for the full story: WineHQ registers i386, and
+# ports.ubuntu.com never serves it, breaking every apt call system-wide
+# until fixed).
+ensure_apt_repos_sane
+
 TARGET_OS="$(state_get ACTIVE_OS)"
 if [ -z "$TARGET_OS" ]; then
     log_error "Could not determine the active OS (ACTIVE_OS is empty in this system's state)."
@@ -125,6 +133,16 @@ case "$TARGET_OS" in
         run_cmd "set remnux password" bash -c "echo 'remnux:malware' | chpasswd"
         log_warn "'remnux' account set with the public demo password 'malware' (see README.md's Risks section)."
         echo "$(t step09_ubuntu_remnux_user_warning)"
+
+        # remnux-installer.sh assumes it runs AS the remnux user (uses
+        # $HOME for salt-states/rustup/dotnet tools, and critically for
+        # the --menu phase's .desktop launchers). Being in the 'sudo'
+        # group above isn't enough on its own: sudo still asks for a
+        # password interactively, which install_remnux_arm64 runs with
+        # no TTY to answer. Grant passwordless sudo here, scoped to
+        # this one account.
+        echo 'remnux ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/remnux-nopasswd
+        chmod 440 /etc/sudoers.d/remnux-nopasswd
 
         # forensics/remnux/install.sh orchestrates its own SaltStack run
         # (remnux.addon), which — like SIFT's states above — can add

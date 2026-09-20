@@ -3,6 +3,75 @@
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 All dates in YYYY-MM-DD.
 
+## [1.5.0] - 2026-09-19
+### Fixed
+- **`apt` breaks system-wide after WineHQ registers i386** (part of
+  REMnux/SIFT's own package set): `ports.ubuntu.com` (this base's arm64
+  repo) never serves i386 packages, so once i386 is registered every
+  subsequent `apt update`/`apt install` — not just REMnux's own —
+  fails with 404s on i386 indices, including on a retry of the very
+  same step. `lib/common.sh`'s new `ensure_apt_repos_sane()`, called
+  at the very start of `steps/09_package_installation.sh` (idempotent,
+  safe on every retry), restricts `ports.ubuntu.com` to `arch=arm64`
+  and adds a working i386 mirror (`archive.ubuntu.com`/
+  `security.ubuntu.com`) for whenever i386 packages are actually
+  needed.
+- **REMnux's own desktop theme/shortcuts landed in the wrong home
+  directory** (`/home/iac` instead of `/home/remnux`), confirmed
+  directly from a real `saltstack.log`: every `remnux-gnome-config-*`
+  state wrote `user: iac`. Cause: `cast`'s own `.cast.yml` declares
+  `remnux_user_template: "{{ .User }}"`, and `cast` resolves that
+  `.User` via `$SUDO_USER` (whoever originally ran `sudo` at the very
+  top of the install), not `$USER`/`$LOGNAME` — which is all the
+  previous fix in this same release overrode. `install_remnux_arm64()`
+  now also sets `SUDO_USER=remnux` alongside `HOME`/`USER`/`LOGNAME`
+  for both `cast install` and `remnux-installer.sh`.
+- **Invisible mouse pointer after installing REMnux, in every session**
+  (not REMnux-specific to begin with — confirmed absent on plain
+  Ubuntu and on SIFT): REMnux's own `remnux.config.display` state
+  appends `MUTTER_DEBUG_FORCE_KMS_MODE=simple` to `/etc/environment`
+  on Ubuntu 24.04 as a VMware/GNOME display accommodation, which breaks
+  Mutter's hardware cursor plane on real Apple Silicon (Asahi) GPUs.
+  `install_remnux_arm64()` strips that one line from `/etc/environment`
+  right after REMnux finishes installing (leaves `NO_AT_BRIDGE=1`,
+  the other line REMnux adds, untouched — harmless).
+- **Stable external-disk identification**: `/dev/sdX` can be reassigned
+  by the kernel between reboots (several USB/Thunderbolt disks on the
+  same Mac). `lib/state.sh`'s new `get_target_disk()` resolves the disk
+  from a stable identifier (`TARGET_DISK_ID`: `/dev/disk/by-id/`
+  symlink, falling back to the GPT `PTUUID`) instead of trusting the
+  cached `/dev/sdX`, self-healing `state.conf` if it moved. Wired into
+  steps 00 (saves it), 02 (backfills it after creating the partition
+  table), 03/04/05 (resolve through it).
+- **Unreliable fixed `sleep` after `luksOpen`**: the LUKS mapper node
+  and, more importantly, the LVM volume on top of it
+  (`/dev/mapper/<vg>-root`) can take longer than a flat 5s to appear,
+  depending on disk/boot timing — replaced with an active wait (poll,
+  up to 30s) for the real device node in steps 03 (LUKS mapper) and
+  04/05 (LVM `root` volume).
+### Changed
+- **REMnux install flow replaced**: `forensics/remnux/install.sh` +
+  `cleanup.sh` + `verify.sh` (moved to `forensics/remnux/legacy/`,
+  kept for reference) superseded by a single vendored
+  `remnux-installer.sh` from the forensics satellite project (fuses
+  those three plus an `extra`-tools phase and a `menu` phase that
+  generates GNOME `.desktop` launchers for whatever actually
+  installed — the old flow never generated any).
+- `lib/common.sh`'s `install_remnux_arm64()` now runs `cast install
+  remnux/salt-states` and `remnux-installer.sh --cleanup --verify
+  --extra --partial --menu` as the `remnux` user (`sudo -u remnux -i
+  --`), not as root: `remnux-installer.sh` reads `$HOME` throughout
+  (salt-states, rustup, dotnet tools, and critically where `--menu`
+  writes its `.desktop` files) — running it as root put all of that
+  under `/root`, invisible to the `remnux` user's actual GNOME session.
+  No longer calls `remnux-installer.sh`'s own `--base` phase: `cast
+  install` already applies the full `remnux.dedicated` state on its
+  own.
+- `steps/09_package_installation.sh`'s `remnux)` branch grants the
+  `remnux` account passwordless sudo (`/etc/sudoers.d/remnux-
+  nopasswd`) — being in the `sudo` group alone still prompts for a
+  password interactively, which the non-TTY install flow can't answer.
+
 ## [1.4.0] - 2026-09-17
 ### Fixed
 - **`grub_set_var` helper (`lib/common.sh`) replaces the fragile

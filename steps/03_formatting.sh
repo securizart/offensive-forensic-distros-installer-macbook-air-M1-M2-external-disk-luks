@@ -13,7 +13,7 @@ init_step_log "$STEP_ID"
 require_root
 
 TARGET_OS="$(state_get ACTIVE_OS)"
-TARGET_DISK="$(state_get TARGET_DISK)"
+TARGET_DISK="$(get_target_disk)" || TARGET_DISK=""
 PART_EFI="$(os_state_get "$TARGET_OS" PART_EFI)"
 PART_BOOT="$(os_state_get "$TARGET_OS" PART_BOOT)"
 PART_ROOT="$(os_state_get "$TARGET_OS" PART_ROOT)"
@@ -93,7 +93,17 @@ run_cmd "luksFormat" cryptsetup luksFormat --type=luks1 "${TARGET_DISK}${PART_RO
 echo "$(t step03_luks_open)"
 run_cmd "luksOpen" cryptsetup open "${TARGET_DISK}${PART_ROOT}" "$CRYPTNAME"
 echo "$(t generic_waiting_device_settle)"
-sleep 5
+# Wait actively for the /dev/mapper/<crypt> node instead of a fixed
+# sleep — a flat delay isn't reliable on every disk/boot combination.
+WAIT=0
+while [ ! -e "/dev/mapper/${CRYPTNAME}" ] && [ "$WAIT" -lt 30 ]; do
+    sleep 1
+    WAIT=$((WAIT+1))
+done
+if [ ! -e "/dev/mapper/${CRYPTNAME}" ]; then
+    log_error "/dev/mapper/${CRYPTNAME} did not appear after ${WAIT}s. Check 'cryptsetup status ${CRYPTNAME}' manually before retrying."
+    exit 1
+fi
 
 echo "$(t step03_mkfs)"
 run_cmd "mkfs.vfat EFI" mkfs.vfat -F 16 -n "$EFI_LABEL" "${TARGET_DISK}${PART_EFI}"

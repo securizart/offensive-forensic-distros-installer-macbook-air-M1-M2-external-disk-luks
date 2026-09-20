@@ -115,6 +115,58 @@ os_list_add() {
 # os_list_get -> comma-separated list of OSes with an install started
 os_list_get() { state_get OS_LIST; }
 
+# --- stable target-disk resolution ---------------------------------------
+# The kernel can assign a different /dev/sdX letter to the same physical
+# external disk between reboots (common on a Mac with several USB/
+# Thunderbolt devices attached, since enumeration order at boot isn't
+# guaranteed). get_target_disk() re-resolves the CURRENT /dev/sdX from a
+# stable identifier (TARGET_DISK_ID: a /dev/disk/by-id/ symlink, falling
+# back to the GPT table's own PTUUID) instead of trusting the plain
+# TARGET_DISK value, and self-heals it in state.conf if the disk moved.
+#
+# Usage: TARGET_DISK="$(get_target_disk)" || { log_error "..."; exit 1; }
+get_target_disk() {
+    local disk_id disk cached ptuuid
+    disk_id="$(state_get TARGET_DISK_ID)"
+
+    if [ -n "$disk_id" ]; then
+        case "$disk_id" in
+            PTUUID:*)
+                ptuuid="${disk_id#PTUUID:}"
+                disk="$(blkid -o device -t "PTUUID=${ptuuid}" 2>/dev/null | head -n1 || true)"
+                ;;
+            *)
+                if [ -e "$disk_id" ]; then
+                    disk="$(readlink -f "$disk_id" 2>/dev/null || true)"
+                fi
+                ;;
+        esac
+
+        if [ -n "$disk" ] && [ -b "$disk" ]; then
+            cached="$(state_get TARGET_DISK)"
+            if [ "$cached" != "$disk" ]; then
+                state_set TARGET_DISK "$disk"
+                log_warn "Target disk re-identified via stable id '$disk_id': now $disk (state.conf had $cached). The kernel likely reassigned /dev/sdX letters after the last reboot." 2>/dev/null || true
+            fi
+            echo "$disk"
+            return 0
+        fi
+
+        log_error "Stable disk identifier '$disk_id' no longer resolves to a block device (disk unplugged, or its by-id path/PTUUID changed)." 2>/dev/null || true
+        return 1
+    fi
+
+    # Backward compatibility: state.conf from before this fix.
+    disk="$(state_get TARGET_DISK)"
+    if [ -n "$disk" ] && [ -b "$disk" ]; then
+        log_warn "TARGET_DISK_ID not set (state.conf predates this fix). Using raw TARGET_DISK='$disk' with no stability guarantee across reboots." 2>/dev/null || true
+        echo "$disk"
+        return 0
+    fi
+
+    return 1
+}
+
 # sync_state_to_mount /part/dest
 # Copies the current state (of the system the installer is running on)
 # to the external disk's filesystem mounted at $1, so that when booting
