@@ -13,7 +13,7 @@
 #                        the arguments already substituted.
 
 I18N_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../i18n" && pwd)"
-declare -A STRINGS=()
+declare -gA STRINGS=()
 IAC_LANG="${IAC_LANG:-}"
 
 i18n_available_langs() {
@@ -50,7 +50,16 @@ i18n_load() {
 # t key [args...] -> translates and interpolates with printf
 t() {
     local key="$1"; shift || true
-    local fmt="${STRINGS[$key]:-}"
+    # Guard against a real bash quirk seen on some builds: referencing
+    # an associative-array key under `set -u` can throw "unbound
+    # variable" naming the KEY itself even with a ":-" default present
+    # (confirmed on real hardware, with the ":-" already in place).
+    # Disabling nounset just for this one lookup sidesteps it entirely,
+    # regardless of the exact bash version/build causing it.
+    local fmt
+    set +u
+    fmt="${STRINGS[$key]:-}"
+    set -u
     if [ -z "$fmt" ]; then
         # Key not found: return the key itself so it's obvious on
         # screen/in logs that a translation is missing, instead of
@@ -65,7 +74,10 @@ t() {
 # t_raw: same as t but without a trailing newline (for inline prompts)
 t_raw() {
     local key="$1"; shift || true
-    local fmt="${STRINGS[$key]:-}"
+    local fmt
+    set +u
+    fmt="${STRINGS[$key]:-}"
+    set -u
     if [ -z "$fmt" ]; then
         printf '[[%s]]' "$key"
         return

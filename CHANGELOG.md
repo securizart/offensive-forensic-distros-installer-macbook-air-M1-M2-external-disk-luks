@@ -3,6 +3,205 @@
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 All dates in YYYY-MM-DD.
 
+## [1.5.1] - 2026-09-27
+
+Ciclo de pruebas de regresión sobre las cuatro distros (Kali, Parrot,
+SIFT, REMnux) instaladas de principio a fin en hardware real. El foco
+ha sido corregir procesos básicos que fallaban silenciosamente o a
+medias — identificación de disco, red, cifrado/LVM, GRUB, paquetería —
+en vez de añadir funcionalidad nueva. De paso, se ha aprovechado para
+una pequeña ingeniería de procesos: centralizar el arranque de cada
+paso (`step_bootstrap()`) y consolidar la fusión de menús GRUB de todas
+las distros en un único mecanismo coherente.
+
+### Fixed
+- **Tres mensajes del paso 07 salían con huecos en blanco**
+  (`"...into so it automatically..."`, `"Linking 's own boot
+  menu..."`, `"...for 's own LUKS passphrase..."`): las cadenas de
+  `i18n/strings.en.sh` esperaban uno o dos `%s`, pero las llamadas
+  `t step07_disk_siblings_script` / `t step07_target_learns_host` / `t
+  step07_done` no pasaban ningún argumento (o solo uno de los dos que
+  hacían falta). Corregido pasando la ruta del script y el nombre del
+  sistema operativo donde correspondía en cada caso.
+- **Las 4 entradas de la malla de GRUB (fases 2, 3 y 4 del paso 07)
+  llevaban a `grub rescue>` al elegirlas**: cada una hace `search
+  --set=root <UUID>` contra la partición `/boot` **dedicada** de cada
+  sistema (no una raíz combinada — confirmado: se busca por la etiqueta
+  `boot_<os>`), pero después usaba `configfile /boot/grub/grub.cfg` —
+  con `$root` ya apuntando a la raíz de esa partición `/boot`, ese
+  `/boot/` de más buscaba una carpeta `boot/` **dentro** de la propia
+  partición `/boot`, que no existe; el `grub.cfg` real vive en
+  `grub/grub.cfg`. Confirmado en hardware real: borrar manualmente una
+  de estas entradas duplicadas y regenerar con `update-grub` dejó el
+  sistema en `grub rescue>` (recuperado solo al reiniciar, por suerte).
+  Corregido a `configfile /grub/grub.cfg` en las 4 construcciones
+  (`47_iac_disk_siblings`, `45_iac_cross_<base>`, y las dos de
+  `48_iac_internal_<base>`) — coincide además con cómo la propia
+  entrada nativa `10_linux` de este mismo `grub.cfg` resuelve rutas
+  relativas a `$root` (`linux /vmlinuz-...`, sin `/boot/` delante).
+- **Un solo paquete roto de `parrot-tools-full` abortaba toda la
+  instalación de paquetes de Parrot**: confirmado en hardware real,
+  `ptunnel` (arm64) intenta arrancar `ptunnel.service` en su script
+  post-instalación, pero esa unidad de systemd no existe en esta
+  compilación ("Unit ptunnel.service not found") — `dpkg` devuelve
+  error para ese único paquete y aborta la transacción entera de
+  `parrot-tools-full`, aunque el resto (cientos de paquetes: Java,
+  Ghidra, Maltego, BloodHound, ZAProxy...) ya se hubiera configurado
+  bien. No es un problema específico de `ptunnel` — cualquier otro
+  paquete de los cientos que instala `*-tools-full` con el mismo tipo
+  de fallo de empaquetado rompería igual. `steps/08_repositories.sh` y
+  `steps/09_package_installation.sh` instalan ahora un `/usr/sbin/
+  policy-rc.d` (la técnica estándar de Debian para instalaciones
+  desatendidas) antes de cualquier `apt`/`dpkg`, que impide que los
+  scripts post-instalación arranquen servicios de verdad durante la
+  instalación — los servicios arrancan con normalidad en el siguiente
+  reinicio, vía las dependencias normales de systemd. Se retira al
+  final del paso 09.
+- **`resolve_physical_disk()` seguía devolviendo el nombre equivocado
+  tras el primer intento de arreglo** (confirmado en hardware real:
+  devolvía `vgkali-root` en vez de `sda`): usaba `lsblk -no NAME`, que
+  para un volumen LVM devuelve el alias "amigable" (`vgkali-root`), pero
+  `/sys/class/block/` está indexado por el **nombre real del kernel**
+  (`dm-1`), no por ese alias — así que la comprobación
+  `/sys/class/block/vgkali-root/slaves` nunca encontraba el directorio,
+  el bucle se cortaba de inmediato, y devolvía el LV tal cual sin llegar
+  nunca al disco físico. Cambiado a `lsblk -no KNAME`, que sí devuelve
+  el nombre real del kernel. Verificado esta vez con una estructura
+  `/sys/class/block/` sintética que replica exactamente la cadena
+  LV→LUKS→partición→disco de un Kali real (`dm-1`→`dm-0`→`sda12`→`sda`),
+  no solo revisado de memoria.
+- **`resolve_physical_disk()` returned empty for LVM-on-LUKS root
+  devices**, making `verify_booted_from_target_disk()` fail with "root
+  is on 'unknown'" even when genuinely booted from the right disk
+  (confirmed on real hardware, right after step 07's reboot into
+  Kali). `lsblk -no PKNAME` — reliable for a simple partition→disk
+  relationship — isn't always reliable across the full LVM
+  LV→LUKS-crypt-mapper→raw-partition stack. Rewritten to walk that
+  stack via `/sys/class/block/<name>/slaves/` (the kernel's own source
+  of truth for device-mapper stacking), falling back to a single
+  `PKNAME` hop only for the final, simple partition→disk step.
+- **Causa raíz real de todos los `[[clave]]` sin traducir y los "unbound
+  variable" (`STRINGS`, `OS_RELEASE_ID_TO_BASE`, etc.) tras la
+  introducción de `step_bootstrap()`**: `declare -A` dentro de una
+  función crea la variable como LOCAL a esa función — aunque el propio
+  `declare` esté físicamente en un fichero distinto cargado con
+  `source`, si ese `source` ocurre mientras una función está en
+  ejecución (aquí, `step_bootstrap()`), Bash igualmente la trata como
+  local a esa función. En cuanto `step_bootstrap()` termina, esa
+  variable desaparece por completo — de ahí que `IAC_LANG` (fijada con
+  `export`, que sí sobrevive) llegara bien, pero `STRINGS` (con 201
+  entradas cargadas correctamente DENTRO de la función) se esfumara
+  justo al volver al script llamador, dejando cualquier `t()` posterior
+  sin nada que leer. Mismo fallo, exactamente, para los 6 arrays de
+  `lib/os_catalog.sh` (`OS_LABEL_CODE`, `OS_SOURCE_BASE`,
+  `OS_RELEASE_ID_TO_BASE`, `OS_PART_EFI_SIZE`, `OS_PART_BOOT_SIZE`,
+  `OS_PART_ROOT_SIZE`). Arreglado añadiendo `-g` (global) a las 7
+  declaraciones — `declare -gA` en vez de `declare -A` — para que
+  sobrevivan a la vuelta de `step_bootstrap()` sin importar desde dónde
+  se invoque.
+- **`${ASSOC_ARRAY[$key]:-default}` threw "unbound variable" under
+  `set -u` on real hardware, naming the key itself, even with the `:-`
+  default present and even for keys that DO exist in the array**:
+  confirmed for `STRINGS[$key]` (every single `t()`/`t_raw()` call,
+  i.e. every piece of UI text in the installer) and for
+  `OS_RELEASE_ID_TO_BASE[$id]` (breaking `detect_booted_base()` and
+  `verify_source_base()`). Since each `t()`/`$(...)` call runs in its
+  own subshell, the failure didn't abort the script — it silently
+  returned an empty string for that one piece of text and moved on,
+  producing whiptail dialogs with blank messages throughout step 00
+  onward instead of a hard failure. Worked around by wrapping just the
+  array-subscript read itself in `set +u` / `set -u`, in
+  `lib/i18n.sh` (`t`, `t_raw`) and `lib/os_catalog.sh`/
+  `steps/07_grub_merge.sh` (every `OS_RELEASE_ID_TO_BASE[...]` read) —
+  sidesteps the exact bash quirk regardless of its precise cause.
+
+### Added
+- **Centralized step bootstrap**: `lib/bootstrap.sh`'s `step_bootstrap()`
+  replaces the ~10 repeated lines (`source state.sh/os_catalog.sh/
+  i18n.sh`, `i18n_load`, `source common.sh`, `CURRENT_STEP_ID`,
+  `init_step_log`, `require_root`) at the top of all 14 steps with a
+  single call.
+- **Centralized LUKS/LVM wait**: `wait_for_device()` and
+  `open_luks_and_activate_vg()` in `lib/common.sh`, used by steps
+  03/04/05 instead of duplicating the open+settle+activate sequence.
+- **Per-OS partition sizing**: moved to `lib/os_catalog.sh`
+  (`OS_PART_ROOT_SIZE` etc.), read by step 02 via `os_part_root_size`.
+- **`verify_booted_from_target_disk()`**: blocking check at the start
+  of steps 08/09/10, guarding against running them while still booted
+  from the original host instead of the actual clone — at that exact
+  point `/etc/os-release` is still identical between the two (that's
+  what step 08 is about to change), so only the physical disk can tell
+  them apart. Without it, running 08/09 on the wrong system silently
+  converts/provisions the HOST instead of the clone.
+- **07+07b fused, GRUB mesh across all targets on the external disk**:
+  `07b_grub_cross_merge.sh` removed as a separate step; `07_grub_merge`
+  now has four phases (host←target, a self-discovering script that
+  meshes every OS's own `/boot` partition on the external disk without
+  touching another target's LUKS-encrypted root, the automatic
+  cross-link with the sibling internal base, and the newly-added target
+  learning from both internal bases). New "Sync GRUB now" menu option
+  to force the mesh to catch up immediately instead of waiting for each
+  target's own next kernel update. Step 07's final message now names
+  the specific entry to pick and warns it will ask for that OS's own
+  LUKS passphrase. Step 07 now reboots automatically at the end too,
+  matching every other destructive/state-changing step.
+### Fixed
+- **Step 01 ran before step 01a (WiFi), and 01a's real ifupdown-based
+  connection logic had been lost** (regression between v1.3.0 and
+  v1.4.0): `install.sh`'s `HOST_STEPS` reordered to `(00 01a 01)`, and
+  `steps/01a_network.sh` restored to actually bring the connection up
+  (interface detection, 5 retries, real IPv4-address check) instead of
+  only writing `wpa_supplicant.conf`.
+- **`ntpdate` has no installation candidate on Debian trixie**: renamed
+  upstream to `ntpsec-ntpdate` (confirmed working on both Debian trixie
+  and Ubuntu/Asahi noble); `steps/01_preparation.sh` updated.
+- **`locale-gen` with a bare locale name as its argument is unreliable**:
+  confirmed on real hardware — reported "Generation complete" for
+  `es_ES.UTF-8`, yet `update-locale` immediately rejected that same
+  value as invalid. Now writes the locale into `/etc/locale.gen` in the
+  "name charset" format Debian itself expects and runs `locale-gen`
+  with no arguments, the same mechanism `dpkg-reconfigure locales`
+  relies on internally.
+- **The `iac` user never actually got sudo access**: `useradd` didn't
+  include `-G sudo`, and the only other mechanism (copying a full
+  `/etc/sudoers` from a preparation file) silently did nothing whenever
+  that file didn't exist — confirmed across every real installation log
+  reviewed, always the case. `iac` now gets `-G sudo` directly.
+- **`steps/06_grub_finalize.sh` produced a `grub.cfg` with TWO
+  `10_linux` marker blocks** (the second truncated/near-empty):
+  `dpkg-reconfigure grub-efi-arm64` already performs the full
+  grub-install (both EFI targets, via `force_efi_extra_removable`) plus
+  its own internal `update-grub`; a separate, redundant, explicit
+  `grub-install --removable /boot/efi` right after it was firing the
+  same triggers a second time on top. Removed.
+- **`ensure_apt_repos_sane()`'s i386 mirror broke `apt update` outright
+  on Kali and Parrot**: it had no `signed-by`, and was added
+  unconditionally — harmless on Ubuntu (trusts its own archive keyring
+  already) but Kali/Parrot have no Ubuntu keyring at all, so apt
+  rejected it ("repository is not signed"), confirmed on real hardware.
+  Now gated on the base actually being Ubuntu-derived (`ports.ubuntu.com`
+  present), signed with that same base's own keyring, and self-healing
+  (removes the file if a previous run left the broken version behind on
+  a non-Ubuntu base).
+- **Kali**: `apt-key add` (deprecated) replaced with `gpg --dearmor` +
+  `signed-by`; added a pin forbidding systemd-boot/shim-signed from
+  being pulled in during the dist-upgrade (this project's boot chain is
+  entirely GRUB-based); `--force-overwrite` handling for Debian trixie →
+  kali-rolling package-split file conflicts; `kali-linux-arm` (Kali's
+  ARM-SBC metapackage — Raspberry Pi, Rockchip, not Apple Silicon) no
+  longer installed.
+- **Parrot**: suite renamed from the dead `lts` (404s entirely since
+  Parrot OS 7.x) to `echo`; `parrot-desktop-kde` + `parrot-interface`
+  added (`parrot-core`/`parrot-tools-full` alone never pulled in a
+  desktop environment).
+- **Kali/Parrot (both)**: WiFi interface re-detection under the new OS's
+  own kernel (names have been observed to differ from the host's, and
+  to drift again between step 08's and step 09's own reboots), with the
+  adapter's MAC pinned to a fixed `wlan0` name via udev so it stops
+  drifting on future boots; `RESUME=none` pinned for this
+  external/clonable disk's swap; this OS's own `grub.cfg` title
+  refreshed post-conversion.
+
 ## [1.5.0] - 2026-09-19
 ### Fixed
 - **`apt` breaks system-wide after WineHQ registers i386** (part of

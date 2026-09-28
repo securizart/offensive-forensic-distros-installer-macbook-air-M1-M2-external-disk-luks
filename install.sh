@@ -31,8 +31,8 @@ source "${BASE_DIR}/lib/common.sh"
 # ---------------------------------------------------------------------------
 # Ordered step definitions
 # ---------------------------------------------------------------------------
-HOST_STEPS=(00 01 01a)
-OS_STEPS=(02 03 04 05 06 07 07b 08 09 10)
+HOST_STEPS=(00 01a 01)
+OS_STEPS=(02 03 04 05 06 07 08 09 10)
 
 declare -A STEP_FILE=(
     [00]="steps/00_check_prereq.sh"
@@ -44,7 +44,6 @@ declare -A STEP_FILE=(
     [05]="steps/05_chroot_prep.sh"
     [06]="steps/06_grub_finalize.sh"
     [07]="steps/07_grub_merge.sh"
-    [07b]="steps/07b_grub_cross_merge.sh"
     [08]="steps/08_repositories.sh"
     [09]="steps/09_package_installation.sh"
     [10]="steps/10_grub_menu_fix.sh"
@@ -53,16 +52,13 @@ declare -A STEP_TITLE_KEY=(
     [00]="step00_title" [01]="step01_title" [01a]="step01a_title"
     [02]="step02_title_short" [03]="step03_title_short" [04]="step04_title_short"
     [05]="step05_title_short" [06]="step06_title_short" [07]="step07_title_short"
-    [07b]="step07b_title_short"
     [08]="step08_title_short" [09]="step09_title_short"
     [10]="step10_title_short"
 )
 # OS steps that DON'T require the previous one to be "done" to run
 # without a warning (06 runs manually inside the chroot opened by 05, so
-# its progress mark never reaches the state the host sees; 07b is
-# genuinely optional — it cross-links the sibling internal base's boot
-# menu, and skipping it never blocks 08/09).
-NO_GATE_STEPS=("06" "07b")
+# its progress mark never reaches the state the host sees).
+NO_GATE_STEPS=("06")
 
 is_no_gate() {
     local id="$1" x
@@ -156,6 +152,7 @@ build_menu_args() {
         done
     fi
 
+    MENU_ARGS+=("GRUBSYNC" "$(t menu_option_grubsync)")
     MENU_ARGS+=("LOGS" "$(t menu_option_logs)")
     MENU_ARGS+=("EXIT" "$(t menu_option_exit)")
 }
@@ -230,6 +227,20 @@ main_menu_loop() {
         case "$choice" in
             "") echo "$(t menu_exit_bye)"; break ;;
             OS) manage_os ;;
+            GRUBSYNC)
+                # The self-discovering script from step 07 (phase 2)
+                # already picks up newly-installed siblings on its own,
+                # next time THIS system's grub-mkconfig runs naturally.
+                # This just triggers that regeneration on demand, so a
+                # sibling installed after this one shows up immediately
+                # instead of waiting for a kernel update.
+                if command -v update-grub >/dev/null 2>&1; then
+                    update-grub && ui_msgbox "$(t menu_title)" "$(t menu_grubsync_done)" \
+                        || ui_msgbox "$(t menu_title)" "$(t menu_grubsync_failed)"
+                else
+                    ui_msgbox "$(t menu_title)" "$(t menu_grubsync_no_grub)"
+                fi
+                ;;
             LOGS) ui_msgbox "$(t menu_title)" "$(t menu_logs_path "$LOG_DIR")" ;;
             EXIT) echo "$(t menu_exit_bye)"; break ;;
             *)

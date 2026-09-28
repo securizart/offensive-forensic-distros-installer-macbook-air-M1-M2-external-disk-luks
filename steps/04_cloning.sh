@@ -2,15 +2,9 @@
 # steps/04_cloning.sh
 STEP_ID="04"
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "${BASE_DIR}/lib/state.sh"
-source "${BASE_DIR}/lib/os_catalog.sh"
-source "${BASE_DIR}/lib/i18n.sh"
-[ -z "${IAC_LANG:-}" ] && IAC_LANG="$(i18n_detect_default_lang)"
-i18n_load "$IAC_LANG"
-source "${BASE_DIR}/lib/common.sh"
-CURRENT_STEP_ID="$STEP_ID"
-init_step_log "$STEP_ID"
-require_root
+# shellcheck source=../lib/bootstrap.sh
+source "${BASE_DIR}/lib/bootstrap.sh"
+step_bootstrap "$STEP_ID"
 
 TARGET_OS="$(state_get ACTIVE_OS)"
 TARGET_DISK="$(get_target_disk)" || TARGET_DISK=""
@@ -35,25 +29,14 @@ echo "$(t step04_title "$(t "os_${TARGET_OS}_name")")"
 echo "$(t step04_intro)"
 echo
 
-[ -e "/dev/mapper/${CRYPTNAME}" ] || run_cmd "luksOpen" cryptsetup open "${TARGET_DISK}${PART_ROOT}" "$CRYPTNAME"
-echo "$(t generic_waiting_device_settle)"
-run_cmd "vgchange activate $VG" vgchange -ay "$VG" 2>/dev/null || true
-WAIT=0
-while [ ! -e "/dev/mapper/${VG}-root" ] && [ "$WAIT" -lt 30 ]; do
-    sleep 1
-    WAIT=$((WAIT+1))
-done
-if [ ! -e "/dev/mapper/${VG}-root" ]; then
-    log_error "/dev/mapper/${VG}-root did not appear after ${WAIT}s of LVM activation on top of $CRYPTNAME. Check 'vgs'/'lvs' manually before retrying."
-    exit 1
-fi
+open_luks_and_activate_vg "$CRYPTNAME" "${TARGET_DISK}${PART_ROOT}" "$VG"
 
 mkdir -p /part "$MNT"
 
 echo "$(t step04_rsync_boot)"
 run_cmd "mount boot" mount "${TARGET_DISK}${PART_BOOT}" "$MNT"
 run_cmd "rsync boot" rsync -axHAWXS --numeric-ids --info=progress2 /boot/ "$MNT"
-rm -Rf "${MNT}/boot/efi/"*
+rm -Rf "${MNT:?}/boot/efi/"*
 run_cmd "umount" umount "$MNT"
 
 echo "$(t step04_rsync_efi)"
@@ -64,7 +47,7 @@ run_cmd "umount" umount "$MNT"
 echo "$(t step04_rsync_root)"
 run_cmd "mount root" mount "/dev/mapper/${VG}-root" "$MNT"
 run_cmd "rsync root" rsync -axHAWXS --numeric-ids --info=progress2 / "$MNT" --exclude=/part
-rm -Rf "${MNT}/boot/"*
+rm -Rf "${MNT:?}/boot/"*
 run_cmd "umount" umount "$MNT"
 
 run_cmd "mount root" mount "/dev/mapper/${VG}-root" "$MNT"
@@ -72,9 +55,16 @@ run_cmd "mount boot" mount "${TARGET_DISK}${PART_BOOT}" "${MNT}/boot"
 run_cmd "mount efi" mount "${TARGET_DISK}${PART_EFI}" "${MNT}/boot/efi"
 
 echo "$(t step04_fstab_crypttab)"
-a="$(blkid | grep "${TARGET_DISK}${PART_EFI}:" | grep -o -E ' UUID="[a-zA-Z0-9\-]*' | cut -c 8- || true)"
-b="$(blkid | grep "${TARGET_DISK}${PART_BOOT}:" | grep -o -E ' UUID="[a-zA-Z0-9\-]*' | cut -c 8- || true)"
-c="$(blkid | grep "${TARGET_DISK}${PART_ROOT}:" | grep -o -E ' UUID="[a-zA-Z0-9\-]*' | cut -c 8- || true)"
+# blkid -s UUID -o value DEV instead of grep'ing blkid's whole output:
+# the previous approach matched the DEVICE PATH as a substring of
+# blkid's output line, which is fragile (e.g. /dev/sda1 is a substring
+# of /dev/sda1p1-style names on some layouts) and depends on blkid's
+# exact text formatting. Asking blkid directly for one device's UUID
+# has neither problem — same technique already used correctly in
+# steps/07b_grub_cross_merge.sh's own UUID lookups.
+a="$(blkid -s UUID -o value "${TARGET_DISK}${PART_EFI}" 2>/dev/null || true)"
+b="$(blkid -s UUID -o value "${TARGET_DISK}${PART_BOOT}" 2>/dev/null || true)"
+c="$(blkid -s UUID -o value "${TARGET_DISK}${PART_ROOT}" 2>/dev/null || true)"
 
 if [ -z "$a" ] || [ -z "$b" ] || [ -z "$c" ]; then
     log_error "Could not resolve all the UUIDs for ${TARGET_DISK}${PART_EFI}/${PART_BOOT}/${PART_ROOT}."

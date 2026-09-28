@@ -7,15 +7,9 @@
 # numbers, so it doesn't touch what's already there.
 STEP_ID="02"
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "${BASE_DIR}/lib/state.sh"
-source "${BASE_DIR}/lib/os_catalog.sh"
-source "${BASE_DIR}/lib/i18n.sh"
-[ -z "${IAC_LANG:-}" ] && IAC_LANG="$(i18n_detect_default_lang)"
-i18n_load "$IAC_LANG"
-source "${BASE_DIR}/lib/common.sh"
-CURRENT_STEP_ID="$STEP_ID"
-init_step_log "$STEP_ID"
-require_root
+# shellcheck source=../lib/bootstrap.sh
+source "${BASE_DIR}/lib/bootstrap.sh"
+step_bootstrap "$STEP_ID"
 
 TARGET_OS="$(state_get ACTIVE_OS)"
 if [ -z "$TARGET_OS" ]; then
@@ -65,9 +59,9 @@ BOOT_LABEL="$(os_boot_label "$TARGET_OS")"
 ROOT_LABEL="$(os_root_label "$TARGET_OS")"
 
 echo "$(t step02_partitioning "$TARGET_DISK")"
-run_cmd "sgdisk new efi" sgdisk --new=${PART_EFI}:0:+512M "$TARGET_DISK"
-run_cmd "sgdisk new boot" sgdisk --new=${PART_BOOT}:0:+2G "$TARGET_DISK"
-run_cmd "sgdisk new root" sgdisk --new=${PART_ROOT}:0:+87G "$TARGET_DISK"
+run_cmd "sgdisk new efi" sgdisk "--new=${PART_EFI}:0:+$(os_part_efi_size "$TARGET_OS")" "$TARGET_DISK"
+run_cmd "sgdisk new boot" sgdisk "--new=${PART_BOOT}:0:+$(os_part_boot_size "$TARGET_OS")" "$TARGET_DISK"
+run_cmd "sgdisk new root" sgdisk "--new=${PART_ROOT}:0:+$(os_part_root_size "$TARGET_OS")" "$TARGET_DISK"
 run_cmd "sgdisk typecode" sgdisk --typecode=${PART_EFI}:ef00 --typecode=${PART_BOOT}:8301 --typecode=${PART_ROOT}:8301 "$TARGET_DISK"
 run_cmd "sgdisk change-name" sgdisk --change-name=${PART_EFI}:${EFI_LABEL} --change-name=${PART_BOOT}:${BOOT_LABEL} --change-name=${PART_ROOT}:${ROOT_LABEL} "$TARGET_DISK"
 run_cmd "sgdisk hybrid" sgdisk --hybrid ${PART_EFI}:${PART_BOOT}:${PART_ROOT} "$TARGET_DISK"

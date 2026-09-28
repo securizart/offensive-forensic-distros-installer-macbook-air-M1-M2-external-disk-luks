@@ -2,15 +2,9 @@
 # steps/05_chroot_prep.sh
 STEP_ID="05"
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "${BASE_DIR}/lib/state.sh"
-source "${BASE_DIR}/lib/os_catalog.sh"
-source "${BASE_DIR}/lib/i18n.sh"
-[ -z "${IAC_LANG:-}" ] && IAC_LANG="$(i18n_detect_default_lang)"
-i18n_load "$IAC_LANG"
-source "${BASE_DIR}/lib/common.sh"
-CURRENT_STEP_ID="$STEP_ID"
-init_step_log "$STEP_ID"
-require_root
+# shellcheck source=../lib/bootstrap.sh
+source "${BASE_DIR}/lib/bootstrap.sh"
+step_bootstrap "$STEP_ID"
 
 TARGET_OS="$(state_get ACTIVE_OS)"
 TARGET_DISK="$(get_target_disk)" || TARGET_DISK=""
@@ -36,18 +30,7 @@ else
     log_warn "/base_inst_kali/preparation/grub does not exist on the host, skipping."
 fi
 
-[ -e "/dev/mapper/${CRYPTNAME}" ] || run_cmd "luksOpen" cryptsetup open "${TARGET_DISK}${PART_ROOT}" "$CRYPTNAME"
-echo "$(t generic_waiting_device_settle)"
-run_cmd "vgchange activate $VG" vgchange -ay "$VG" 2>/dev/null || true
-WAIT=0
-while [ ! -e "/dev/mapper/${VG}-root" ] && [ "$WAIT" -lt 30 ]; do
-    sleep 1
-    WAIT=$((WAIT+1))
-done
-if [ ! -e "/dev/mapper/${VG}-root" ]; then
-    log_error "/dev/mapper/${VG}-root did not appear after ${WAIT}s of LVM activation on top of $CRYPTNAME. Check 'vgs'/'lvs' manually before retrying."
-    exit 1
-fi
+open_luks_and_activate_vg "$CRYPTNAME" "${TARGET_DISK}${PART_ROOT}" "$VG"
 
 mkdir -p "$MNT"
 echo "$(t step05_mounting)"

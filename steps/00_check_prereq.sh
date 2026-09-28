@@ -2,19 +2,9 @@
 # steps/00_check_prereq.sh
 STEP_ID="00"
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck source=../lib/state.sh
-source "${BASE_DIR}/lib/state.sh"
-# shellcheck source=../lib/os_catalog.sh
-source "${BASE_DIR}/lib/os_catalog.sh"
-# shellcheck source=../lib/i18n.sh
-source "${BASE_DIR}/lib/i18n.sh"
-[ -z "${IAC_LANG:-}" ] && IAC_LANG="$(i18n_detect_default_lang)"
-i18n_load "$IAC_LANG"
-# shellcheck source=../lib/common.sh
-source "${BASE_DIR}/lib/common.sh"
-CURRENT_STEP_ID="$STEP_ID"
-init_step_log "$STEP_ID"
-require_root
+# shellcheck source=../lib/bootstrap.sh
+source "${BASE_DIR}/lib/bootstrap.sh"
+step_bootstrap "$STEP_ID"
 
 echo "$(t step00_title)"
 echo "$(t step00_intro)"

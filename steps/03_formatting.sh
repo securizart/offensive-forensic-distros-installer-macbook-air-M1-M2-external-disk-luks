@@ -2,15 +2,9 @@
 # steps/03_formatting.sh
 STEP_ID="03"
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "${BASE_DIR}/lib/state.sh"
-source "${BASE_DIR}/lib/os_catalog.sh"
-source "${BASE_DIR}/lib/i18n.sh"
-[ -z "${IAC_LANG:-}" ] && IAC_LANG="$(i18n_detect_default_lang)"
-i18n_load "$IAC_LANG"
-source "${BASE_DIR}/lib/common.sh"
-CURRENT_STEP_ID="$STEP_ID"
-init_step_log "$STEP_ID"
-require_root
+# shellcheck source=../lib/bootstrap.sh
+source "${BASE_DIR}/lib/bootstrap.sh"
+step_bootstrap "$STEP_ID"
 
 TARGET_OS="$(state_get ACTIVE_OS)"
 TARGET_DISK="$(get_target_disk)" || TARGET_DISK=""
@@ -41,9 +35,9 @@ confirm_destructive "${TARGET_DISK}${PART_ROOT} (LUKS, OS: $(t "os_${TARGET_OS}_
 # This wipes and recreates the LUKS/LVM layout: any recorded progress
 # for steps 04-09 refers to data that's about to be destroyed. Reset it
 # so the menu doesn't keep showing them "done" from a previous attempt
-# — which previously let the flow jump straight to 07b/08/09 without
+# — which previously let the flow jump straight to 08/09 without
 # 04-07 ever having touched the fresh clone.
-for LATER_STEP in 04 05 06 07 07b 08 09; do
+for LATER_STEP in 04 05 06 07 08 09; do
     os_reset_step "$TARGET_OS" "$LATER_STEP"
 done
 
@@ -95,13 +89,8 @@ run_cmd "luksOpen" cryptsetup open "${TARGET_DISK}${PART_ROOT}" "$CRYPTNAME"
 echo "$(t generic_waiting_device_settle)"
 # Wait actively for the /dev/mapper/<crypt> node instead of a fixed
 # sleep — a flat delay isn't reliable on every disk/boot combination.
-WAIT=0
-while [ ! -e "/dev/mapper/${CRYPTNAME}" ] && [ "$WAIT" -lt 30 ]; do
-    sleep 1
-    WAIT=$((WAIT+1))
-done
-if [ ! -e "/dev/mapper/${CRYPTNAME}" ]; then
-    log_error "/dev/mapper/${CRYPTNAME} did not appear after ${WAIT}s. Check 'cryptsetup status ${CRYPTNAME}' manually before retrying."
+if ! wait_for_device "/dev/mapper/${CRYPTNAME}" 30; then
+    log_error "Check 'cryptsetup status ${CRYPTNAME}' manually before retrying."
     exit 1
 fi
 

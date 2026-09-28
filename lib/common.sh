@@ -74,8 +74,13 @@ on_error() {
 trap 'on_error $LINENO' ERR
 
 # run_cmd "description" cmd arg1 arg2...
-# Runs a command, logs it (command + result) and propagates the failure
-# through `set -e`/trap ERR.
+# Runs a command and logs it (command + result). NOTE: this project
+# never enables `set -e` (only `set -u`/pipefail, see the top of this
+# file) — a failing command still stops the whole step because the
+# `trap ... ERR` below fires regardless of -e, and on_error() calls
+# `exit` explicitly. Avoiding `set -e` sidesteps its usual footguns
+# with `if`/`&&`/`||` (a failure inside one of those wouldn't trigger
+# it anyway, but would silently be swallowed instead of logged).
 run_cmd() {
     local desc="$1"; shift
     log_info "$(t log_running "$desc" "$*")"
@@ -106,15 +111,108 @@ require_root() {
 # LVM alone), where there are two or three layers to climb. Returns
 # empty if DEVICE can't be resolved at all.
 resolve_physical_disk() {
-    local dev="$1" name parent
-    name="$(lsblk -no PKNAME "$dev" 2>/dev/null | head -n1 || true)"
-    [ -z "$name" ] && { echo ""; return; }
+    local dev="$1" kname parent slaves_dir first_slave
+    # KNAME (not NAME): for device-mapper devices, lsblk's NAME column
+    # shows the friendly mapper alias (e.g. "vgkali-root" for an LV),
+    # but /sys/class/block/ is keyed by the RAW kernel device name
+    # (e.g. "dm-1") — confirmed on real hardware: using NAME here made
+    # the /sys/class/block/<name>/slaves lookup below always miss (that
+    # directory doesn't exist under the friendly alias), so the walk
+    # stopped immediately and returned the LV's own name instead of
+    # ever reaching the physical disk.
+    kname="$(lsblk -no KNAME "$dev" 2>/dev/null | head -n1 | tr -d '[:space:]')"
+    [ -z "$kname" ] && { echo ""; return; }
+    # Walk the device-mapper stack (LVM LV -> LUKS crypt mapper -> raw
+    # partition) via /sys's own slaves/ listing — the kernel's own
+    # source of truth for this, and more reliable than lsblk's PKNAME
+    # column for stacked devices: confirmed on real hardware that
+    # PKNAME can come back empty for an LV's mapper device sitting on
+    # top of a LUKS container, even though the underlying chain is
+    # perfectly resolvable via /sys.
     while true; do
-        parent="$(lsblk -no PKNAME "/dev/${name}" 2>/dev/null | head -n1 || true)"
-        [ -z "$parent" ] && break
-        name="$parent"
+        slaves_dir="/sys/class/block/${kname}/slaves"
+        if [ -d "$slaves_dir" ]; then
+            first_slave="$(ls "$slaves_dir" 2>/dev/null | head -n1)"
+            if [ -n "$first_slave" ]; then
+                kname="$first_slave"
+                continue
+            fi
+        fi
+        break
     done
-    echo "$name"
+    # $kname is now a raw partition (e.g. sda12) or already a whole
+    # disk. One more PKNAME hop covers the simple partition->disk case,
+    # which IS reliably supported by lsblk.
+    parent="$(lsblk -no PKNAME "/dev/${kname}" 2>/dev/null | head -n1 || true)"
+    [ -n "$parent" ] && kname="$parent"
+    echo "$kname"
+}
+
+# wait_for_device PATH [TIMEOUT=30] -> polls once a second until PATH
+# exists as a block/device node, or TIMEOUT seconds pass. Returns 0 as
+# soon as it appears, 1 (with a log_error naming how long it waited) if
+# it times out — the caller just checks the exit code. Extracted from
+# three near-identical inline loops that used to live separately in
+# steps 03, 04 and 05.
+wait_for_device() {
+    local dev="$1" timeout="${2:-30}" waited=0
+    while [ ! -e "$dev" ] && [ "$waited" -lt "$timeout" ]; do
+        sleep 1
+        waited=$((waited+1))
+    done
+    if [ ! -e "$dev" ]; then
+        log_error "$dev did not appear after ${waited}s."
+        return 1
+    fi
+    return 0
+}
+
+# open_luks_and_activate_vg CRYPTNAME PART_ROOT_DEV VG
+# Opens the LUKS mapping CRYPTNAME on PART_ROOT_DEV (if not already
+# open), activates its volume group VG, and waits for
+# /dev/mapper/<VG>-root to appear (exits the calling script if it never
+# does). Steps 04 and 05 both need exactly this sequence before they can
+# touch the cloned system's root filesystem.
+open_luks_and_activate_vg() {
+    local cryptname="$1" part_root_dev="$2" vg="$3"
+    [ -e "/dev/mapper/${cryptname}" ] || run_cmd "luksOpen" cryptsetup open "$part_root_dev" "$cryptname"
+    echo "$(t generic_waiting_device_settle)"
+    run_cmd "vgchange activate $vg" vgchange -ay "$vg" 2>/dev/null || true
+    if ! wait_for_device "/dev/mapper/${vg}-root" 30; then
+        log_error "/dev/mapper/${vg}-root did not appear after LVM activation on top of $cryptname. Check 'vgs'/'lvs' manually before retrying."
+        exit 1
+    fi
+}
+
+# verify_booted_from_target_disk
+# Checks that the system CURRENTLY BOOTED is actually running from
+# TARGET_DISK (the external disk), not from the internal host. Steps
+# 08/09/10 assume they're already running INSIDE the freshly cloned
+# system (after the manual reboot at the end of step 07) — but at that
+# exact point /etc/os-release on the clone is still byte-identical to
+# the host's own (steps 08/09 are precisely what diverges it), so
+# verify_source_base can't tell them apart. This checks the physical
+# disk the root filesystem lives on instead, which can, reusing the
+# same technique steps/07b_grub_cross_merge.sh already uses for its own
+# "am I on the external disk?" check. Intentionally BLOCKING: running
+# step 08 against the wrong system would silently apply target-specific
+# repos/packages/kernel-holds to the host instead of the clone.
+verify_booted_from_target_disk() {
+    local target_disk root_src_dev root_disk_name target_disk_name
+    target_disk="$(get_target_disk)" || {
+        log_error "Cannot resolve TARGET_DISK to verify which disk is currently booted."
+        exit 1
+    }
+    root_src_dev="$(findmnt -no SOURCE / 2>/dev/null || true)"
+    root_disk_name="$(resolve_physical_disk "$root_src_dev")"
+    target_disk_name="$(basename "$target_disk")"
+    if [ "$root_disk_name" != "$target_disk_name" ]; then
+        log_error "Not booted from the target disk: root is on '${root_disk_name:-unknown}', expected '$target_disk_name' ($target_disk)."
+        echo
+        echo "$(t source_disk_mismatch "$(t "os_${TARGET_OS}_name")" "$(t "os_${TARGET_OS}_name")")"
+        exit 1
+    fi
+    log_info "Booted from target disk ($target_disk) — OK."
 }
 
 # grub_set_var NAME VALUE -> sets NAME=VALUE in /etc/default/grub,
@@ -201,28 +299,60 @@ ensure_apt_repos_sane() {
     local ubuntu_sources="/etc/apt/sources.list.d/ubuntu.sources"
     local legacy_sources="/etc/apt/sources.list"
     local i386_mirror="/etc/apt/sources.list.d/i386-archive.list"
+    local ubuntu_keyring="/usr/share/keyrings/ubuntu-archive-keyring.gpg"
     local changed=0
+    local is_ubuntu_based=0
 
-    if [ -f "$ubuntu_sources" ] && grep -q "ports\.ubuntu\.com" "$ubuntu_sources" \
-       && ! grep -q "^Architectures: arm64" "$ubuntu_sources"; then
-        log_info "Restricting ports.ubuntu.com to arm64 in ${ubuntu_sources} (prevents i386 404s once i386 gets registered by third-party packages like WineHQ)."
-        sed -i '/^Signed-By: \/usr\/share\/keyrings\/ubuntu-archive-keyring.gpg$/a Architectures: arm64' "$ubuntu_sources"
-        changed=1
+    if [ -f "$ubuntu_sources" ] && grep -q "ports\.ubuntu\.com" "$ubuntu_sources"; then
+        is_ubuntu_based=1
+        if ! grep -q "^Architectures: arm64" "$ubuntu_sources"; then
+            log_info "Restricting ports.ubuntu.com to arm64 in ${ubuntu_sources} (prevents i386 404s once i386 gets registered by third-party packages like WineHQ)."
+            sed -i '/^Signed-By: \/usr\/share\/keyrings\/ubuntu-archive-keyring.gpg$/a Architectures: arm64' "$ubuntu_sources"
+            changed=1
+        fi
     fi
 
-    if [ -f "$legacy_sources" ] && grep -qE "^deb http://ports\.ubuntu\.com/ubuntu-ports" "$legacy_sources"; then
-        log_info "Restricting ports.ubuntu.com to arm64 in ${legacy_sources}."
-        sed -i -E 's#^deb (http://ports\.ubuntu\.com/ubuntu-ports)#deb [arch=arm64] \1#' "$legacy_sources"
-        changed=1
+    if [ -f "$legacy_sources" ] && grep -qE "^deb (\[arch=arm64\] )?http://ports\.ubuntu\.com/ubuntu-ports" "$legacy_sources"; then
+        is_ubuntu_based=1
+        if ! grep -qE "^deb \[arch=arm64\] http://ports\.ubuntu\.com/ubuntu-ports" "$legacy_sources"; then
+            log_info "Restricting ports.ubuntu.com to arm64 in ${legacy_sources}."
+            sed -i -E 's#^deb (http://ports\.ubuntu\.com/ubuntu-ports)#deb [arch=arm64] \1#' "$legacy_sources"
+            changed=1
+        fi
     fi
 
-    if [ ! -f "$i386_mirror" ]; then
-        log_info "Adding an i386-capable mirror (archive.ubuntu.com/security.ubuntu.com) for whenever third-party packages (e.g. WineHQ) register the i386 architecture — ports.ubuntu.com never serves it."
-        cat > "$i386_mirror" << 'I386_MIRROR_EOF'
-deb [arch=i386] http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse
-deb [arch=i386] http://archive.ubuntu.com/ubuntu noble-updates main restricted universe multiverse
-deb [arch=i386] http://security.ubuntu.com/ubuntu noble-security main restricted universe multiverse
+    # This whole failure mode only exists on an Ubuntu-based target
+    # (sift/remnux) — Kali and Parrot never use ports.ubuntu.com at all.
+    # Confirmed the hard way: an earlier version of this fix added the
+    # archive.ubuntu.com/security.ubuntu.com i386 mirror unconditionally,
+    # with no Signed-By — harmless on Ubuntu (which already trusts
+    # Ubuntu's own archive keyring), but broke `apt update` outright on
+    # Kali/Parrot ("repository is not signed"), since those bases have no
+    # Ubuntu keyring installed to trust it with. Gate the whole i386
+    # mirror addition on ports.ubuntu.com actually being present, and
+    # sign it with the SAME keyring file ports.ubuntu.com's own entry
+    # already uses (guaranteed present together, since they're both
+    # Ubuntu-only).
+    if [ "$is_ubuntu_based" -eq 1 ]; then
+        if [ -f "$ubuntu_keyring" ] && { [ ! -f "$i386_mirror" ] || ! grep -q "signed-by=" "$i386_mirror"; }; then
+            log_info "Adding/fixing the signed i386-capable mirror (archive.ubuntu.com/security.ubuntu.com) for whenever third-party packages (e.g. WineHQ) register the i386 architecture — ports.ubuntu.com never serves it."
+            cat > "$i386_mirror" << I386_MIRROR_EOF
+deb [arch=i386 signed-by=${ubuntu_keyring}] http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse
+deb [arch=i386 signed-by=${ubuntu_keyring}] http://archive.ubuntu.com/ubuntu noble-updates main restricted universe multiverse
+deb [arch=i386 signed-by=${ubuntu_keyring}] http://security.ubuntu.com/ubuntu noble-security main restricted universe multiverse
 I386_MIRROR_EOF
+            changed=1
+        fi
+    elif [ -f "$i386_mirror" ]; then
+        # Not Ubuntu-based (Kali/Parrot): this file has no business
+        # existing here at all — it's Ubuntu-specific, and without
+        # Ubuntu's own keyring installed apt rejects it outright
+        # ("repository is not signed"), breaking apt update entirely.
+        # Confirmed on real hardware: an earlier version of this fix
+        # added it unconditionally, exactly causing that. Remove it if
+        # a previous run left it behind.
+        log_info "Removing ${i386_mirror}: this base isn't Ubuntu-derived (no ports.ubuntu.com), so this Ubuntu-only i386 mirror doesn't apply here and breaks 'apt update' without Ubuntu's keyring to trust it with."
+        rm -f "$i386_mirror"
         changed=1
     fi
 
@@ -312,26 +442,6 @@ install_cast_arm64() {
     fi
 }
 
-# install_remnux_arm64
-# Installs REMnux on Ubuntu/Asahi (arm64) by orchestrating the scripts
-# vendored under forensics/remnux/, which come as-is from the
-# `forensic-distros-silicon-external-disk` satellite project (that
-# project owns the actual REMnux logic and its validation on a real VM;
-# this function only wires it into the main installer's flow — update
-# forensics/remnux/ from there when a new version is approved).
-#
-# Known, documented limitation (see forensics/remnux/FINDINGS.md there):
-# a full `remnux.addon` run succeeds on ~88% of states (~889/1009);
-# cleanup.sh removes the binaries Salt marks as installed but that are
-# actually broken x86-64 ELFs on arm64, and verify.sh installs the
-# confirmed native alternatives for 4 of them automatically
-# (docker-compose, redress, yara-x, detect-it-easy). Not all REMnux
-# tools end up available; this is expected, not a failure of this
-# function.
-#
-# Returns 0 if the whole install+cleanup+verify sequence ran (even if
-# verify.sh reports individual issues, which it logs on its own), 1 if a
-# hard prerequisite (git, cast, or the vendored scripts) is missing.
 # install_remnux_arm64
 # Installs REMnux on Ubuntu/Asahi (arm64), targeting the dedicated
 # "remnux" system user (created in steps/09's remnux) branch) rather

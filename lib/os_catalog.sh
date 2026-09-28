@@ -20,7 +20,7 @@
 
 SUPPORTED_OS=(kali parrot sift remnux)
 
-declare -A OS_LABEL_CODE=(
+declare -gA OS_LABEL_CODE=(
     [kali]="KALI"
     [parrot]="PARROT"
     [sift]="SIFT"
@@ -44,7 +44,7 @@ declare -A OS_LABEL_CODE=(
 # This lets you keep an Ubuntu+SIFT and an Ubuntu+REMnux as two
 # independently bootable systems on the same external disk, instead of
 # forcing them to share one volume group. See docs/OPERATING_SYSTEMS.md.
-declare -A OS_SOURCE_BASE=(
+declare -gA OS_SOURCE_BASE=(
     [kali]="debian"
     [parrot]="debian"
     [sift]="ubuntu"
@@ -54,7 +54,7 @@ declare -A OS_SOURCE_BASE=(
 # Maps the booted system's /etc/os-release ID= field to our internal
 # "source base" id. Extend this if a new target OS is added with a
 # source base other than debian/ubuntu.
-declare -A OS_RELEASE_ID_TO_BASE=(
+declare -gA OS_RELEASE_ID_TO_BASE=(
     [debian]="debian"
     [ubuntu]="ubuntu"
 )
@@ -68,6 +68,26 @@ os_vg_name()    { echo "vg${1}"; }
 os_crypt_name() { echo "${1}_root_crypt"; }
 os_mountpoint() { echo "/part/dest_${1}"; }
 
+# --- per-OS partition sizes --------------------------------------------
+# Previously hardcoded inline in steps/02_partitions.sh (512M/2G/87G for
+# every target alike). Centralized here, next to the rest of the
+# per-OS metadata, so a future target with different sizing needs
+# (e.g. kali-linux-large vs. a lighter SIFT/REMnux clone) doesn't
+# require touching step 02 itself — just these tables. Same values as
+# before by default, so v1.5.0 disks keep working unchanged.
+declare -gA OS_PART_EFI_SIZE=(
+    [kali]="512M" [parrot]="512M" [sift]="512M" [remnux]="512M"
+)
+declare -gA OS_PART_BOOT_SIZE=(
+    [kali]="2G" [parrot]="2G" [sift]="2G" [remnux]="2G"
+)
+declare -gA OS_PART_ROOT_SIZE=(
+    [kali]="87G" [parrot]="87G" [sift]="87G" [remnux]="87G"
+)
+os_part_efi_size()  { echo "${OS_PART_EFI_SIZE[$1]:-512M}"; }
+os_part_boot_size() { echo "${OS_PART_BOOT_SIZE[$1]:-2G}"; }
+os_part_root_size() { echo "${OS_PART_ROOT_SIZE[$1]:-87G}"; }
+
 # os_source_base OS -> id of the expected source base (debian|ubuntu)
 os_source_base() { echo "${OS_SOURCE_BASE[$1]:-}"; }
 
@@ -76,9 +96,10 @@ os_source_base() { echo "${OS_SOURCE_BASE[$1]:-}"; }
 # down to what's actually installable from the currently booted system,
 # instead of listing every catalogued OS unconditionally.
 os_targets_for_base() {
-    local base="$1" id
+    local base="$1" id val
     for id in "${SUPPORTED_OS[@]}"; do
-        [ "${OS_SOURCE_BASE[$id]:-}" = "$base" ] && echo "$id"
+        set +u; val="${OS_SOURCE_BASE[$id]:-}"; set -u
+        [ "$val" = "$base" ] && echo "$id"
     done
 }
 
@@ -87,9 +108,18 @@ os_targets_for_base() {
 # /etc/os-release can't be read or the ID isn't recognized.
 detect_booted_base() {
     [ -r /etc/os-release ] || { echo ""; return; }
-    local actual_id
+    local actual_id result
     actual_id="$(set +u; . /etc/os-release; echo "${ID:-}")"
-    echo "${OS_RELEASE_ID_TO_BASE[$actual_id]:-}"
+    # Guard against a real bash quirk seen on some builds: referencing
+    # an associative-array key under `set -u` can throw "unbound
+    # variable" naming the KEY itself even with a ":-" default present
+    # (confirmed on real hardware, even for a key that DOES exist in
+    # the array). Disabling nounset just for this one lookup sidesteps
+    # it entirely, regardless of the exact bash version/build cause.
+    set +u
+    result="${OS_RELEASE_ID_TO_BASE[$actual_id]:-}"
+    set -u
+    echo "$result"
 }
 
 # verify_source_base OS
@@ -121,7 +151,9 @@ verify_source_base() {
     # /etc/os-release variables into the calling script, and to avoid
     # breaking under `set -u` if the file doesn't define some key.
     actual_id="$(set +u; . /etc/os-release; echo "${ID:-}")"
+    set +u
     actual_base="${OS_RELEASE_ID_TO_BASE[$actual_id]:-}"
+    set -u
 
     if [ "$actual_base" != "$expected_base" ]; then
         log_error "Wrong source base for '$target_os': expected '$expected_base', detected ID='${actual_id:-empty}' (resolved base: '${actual_base:-none}')."

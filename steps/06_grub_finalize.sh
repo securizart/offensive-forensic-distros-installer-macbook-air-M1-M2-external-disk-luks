@@ -4,14 +4,9 @@
 # opened by step 05 (path: /base_inst_kali_installer/steps/06_...).
 STEP_ID="06"
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "${BASE_DIR}/lib/state.sh"
-source "${BASE_DIR}/lib/i18n.sh"
-[ -z "${IAC_LANG:-}" ] && IAC_LANG="$(i18n_detect_default_lang)"
-i18n_load "$IAC_LANG"
-source "${BASE_DIR}/lib/common.sh"
-CURRENT_STEP_ID="$STEP_ID"
-init_step_log "$STEP_ID"
-require_root
+# shellcheck source=../lib/bootstrap.sh
+source "${BASE_DIR}/lib/bootstrap.sh"
+step_bootstrap "$STEP_ID"
 
 TARGET_OS="$(state_get ACTIVE_OS)"
 
@@ -69,8 +64,17 @@ run_cmd "update-initramfs" update-initramfs -c -k all
 echo "$(t step06_grub_install)"
 echo 'grub-efi-arm64 grub2/update_nvram boolean false' | debconf-set-selections
 echo 'grub-efi-arm64 grub2/force_efi_extra_removable boolean true' | debconf-set-selections
+# dpkg-reconfigure below already performs the full grub-install (both the
+# regular /boot/efi target AND the removable one, thanks to
+# force_efi_extra_removable=true above) plus its own internal
+# update-grub, as dpkg triggers for the grub-efi-arm64 package. A
+# separate, explicit 'grub-install --removable /boot/efi' right after
+# used to be here too — confirmed redundant, and its own triggers firing
+# a second time right on top of the first were producing TWO separate
+# BEGIN/END /etc/grub.d/10_linux marker pairs in the resulting grub.cfg
+# (the second one truncated/near-empty), which step 07's merge then has
+# to specially detect and work around by keeping only the first pair.
 run_cmd "dpkg-reconfigure grub-efi-arm64" dpkg-reconfigure -fnoninteractive grub-efi-arm64
-run_cmd "grub-install removable" grub-install --removable /boot/efi
 
 if [ -f /etc/default/grub.iac ]; then
     run_cmd "restore grub" cp /etc/default/grub.iac /etc/default/grub

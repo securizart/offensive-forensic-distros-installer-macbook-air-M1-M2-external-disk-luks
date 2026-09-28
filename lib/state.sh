@@ -30,7 +30,12 @@ state_set() {
     local key="$1" val="$2"
     state_init
     local tmp
-    tmp="$(mktemp)"
+    # -p "$STATE_DIR": keeps the temp file on the SAME filesystem as
+    # STATE_FILE, so the final `mv` below is an atomic rename instead of
+    # a copy+delete (which is what `mv` falls back to across
+    # filesystems — losing the atomicity this two-step write pattern is
+    # meant to provide).
+    tmp="$(mktemp -p "$STATE_DIR")"
     grep -vE "^${key}=" "$STATE_FILE" > "$tmp" 2>/dev/null || true
     echo "${key}=${val}" >> "$tmp"
     mv "$tmp" "$STATE_FILE"

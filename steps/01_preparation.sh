@@ -4,15 +4,9 @@
 # part (see 01a).
 STEP_ID="01"
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "${BASE_DIR}/lib/state.sh"
-source "${BASE_DIR}/lib/os_catalog.sh"
-source "${BASE_DIR}/lib/i18n.sh"
-[ -z "${IAC_LANG:-}" ] && IAC_LANG="$(i18n_detect_default_lang)"
-i18n_load "$IAC_LANG"
-source "${BASE_DIR}/lib/common.sh"
-CURRENT_STEP_ID="$STEP_ID"
-init_step_log "$STEP_ID"
-require_root
+# shellcheck source=../lib/bootstrap.sh
+source "${BASE_DIR}/lib/bootstrap.sh"
+step_bootstrap "$STEP_ID"
 
 echo "$(t step01_title)"
 echo "$(t step01_intro)"
@@ -56,7 +50,7 @@ else
     run_cmd "apt upgrade" apt upgrade -y
 fi
 run_cmd "apt install base packages" apt install -y \
-    initramfs-tools pciutils wpasupplicant tcpdump vim tmux vlan ntpdate \
+    initramfs-tools pciutils wpasupplicant tcpdump vim tmux vlan ntpsec-ntpdate \
     parted curl wget grub-efi-arm64 mtr-tiny dbus ca-certificates sudo \
     openssh-client mtools gdisk cryptsetup cryptsetup-initramfs lvm2 \
     os-prober rsync dosfstools gnupg1 gnupg2 locales keyboard-configuration \
@@ -107,7 +101,25 @@ XKBOPTIONS=""
 KBEOF
 echo "LANG=${KB_LANG}" > /etc/default/locale
 
-run_cmd "locale-gen" locale-gen "$KB_LANG"
+# locale-gen with a bare name as a positional argument isn't reliable
+# across locale-gen versions (confirmed failure: reported "Generation
+# complete" yet update-locale immediately rejected the very same LANG
+# as invalid, with `locale` unable to find it afterward). The format
+# Debian's own /etc/locale.gen — and dpkg-reconfigure locales under the
+# hood — actually uses is "name charset" (e.g. "es_ES.UTF-8 UTF-8"),
+# uncommented as its own line. Write it that way and regenerate with no
+# arguments (regenerates everything enabled in the file), which is the
+# same mechanism `dpkg-reconfigure locales` itself relies on.
+LOCALE_CHARSET="${KB_LANG##*.}"
+[ -z "$LOCALE_CHARSET" ] && LOCALE_CHARSET="UTF-8"
+if grep -qE "^${KB_LANG} ${LOCALE_CHARSET}$" /etc/locale.gen 2>/dev/null; then
+    : # already present and uncommented
+elif grep -qE "^# ?${KB_LANG} ${LOCALE_CHARSET}$" /etc/locale.gen 2>/dev/null; then
+    sed -i -E "s/^# ?(${KB_LANG} ${LOCALE_CHARSET})$/\1/" /etc/locale.gen
+else
+    echo "${KB_LANG} ${LOCALE_CHARSET}" >> /etc/locale.gen
+fi
+run_cmd "locale-gen" locale-gen
 run_cmd "update-locale" update-locale "LANG=${KB_LANG}"
 run_cmd "dpkg-reconfigure keyboard-configuration (noninteractive)" dpkg-reconfigure -f noninteractive keyboard-configuration
 command -v setupcon >/dev/null 2>&1 && setupcon
@@ -122,17 +134,25 @@ else
     echo "$(t step01_create_user)"
     if id iac >/dev/null 2>&1; then
         log_warn "User 'iac' already exists, skipping creation."
+        run_cmd "add iac to sudo group" usermod -aG sudo iac
     else
-        run_cmd "useradd iac" useradd -m -c 'Ignacio Arduengo Cuesta' -s /bin/bash iac
+        run_cmd "useradd iac" useradd -m -c 'Ignacio Arduengo Cuesta' -s /bin/bash -G sudo iac
     fi
     echo "$(t step01_ask_user_password)"
     passwd iac
 
+    # The useradd/usermod above already grants sudo via group membership
+    # — confirmed the actual, reliable path: /base_inst_kali/preparation/
+    # sudoers has never existed in practice (every real run so far warns
+    # "does not exist, skipping"), which used to leave 'iac' with NO sudo
+    # access at all. If that file DOES exist, it's applied as an
+    # additional override (e.g. custom NOPASSWD rules), on top of the
+    # baseline group membership rather than instead of it.
     if [ -f /base_inst_kali/preparation/sudoers ]; then
         run_cmd "copy sudoers" cp /base_inst_kali/preparation/sudoers /etc/sudoers
         echo "$(t step01_sudoers_copied)"
     else
-        log_warn "/base_inst_kali/preparation/sudoers does not exist, skipping (review 'iac' user's sudo permissions manually)."
+        log_info "/base_inst_kali/preparation/sudoers does not exist — 'iac' already has sudo via the 'sudo' group membership set above."
     fi
 fi
 
