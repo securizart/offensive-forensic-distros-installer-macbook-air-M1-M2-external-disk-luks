@@ -1,5 +1,7 @@
 # Offensive & Forensic Distros Installer for MacBook Air M1/M2 (external disk, LUKS) — internal codename `base_inst_kali`
 
+<img width="1024" height="1024" alt="logo" src="https://github.com/user-attachments/assets/5aef2270-0844-40c4-97a2-afa8d403764f" />
+
 A menu-driven installer with support for **several offensive operating
 systems** (Kali Linux, Parrot Security OS) **and forensic toolkits**
 (SIFT Workstation, REMnux — each its own independently bootable Ubuntu
