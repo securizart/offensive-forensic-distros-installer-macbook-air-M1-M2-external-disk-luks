@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=iK4lN3
+Description=iK4lN3 forensic boot splash (logo + paw-print trace + LUKS prompt)
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/ik4ln3
+ScriptFile=/usr/share/plymouth/themes/ik4ln3/ik4ln3.script

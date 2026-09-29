@@ -3,6 +3,56 @@
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 All dates in YYYY-MM-DD.
 
+## [2.0.0] - 2026-09-29
+
+Añade **iK4lN3**, un entorno forense propio para Apple Silicon, como
+nuevo target de primer nivel del instalador (base `ubuntu`, grupo de
+volúmenes `vgik4ln3`), junto a Kali, Parrot, SIFT y REMnux. iK4lN3 es
+una reimplementación independiente en arm64 —construida a partir de
+paquetes upstream y scripts propios, sin reempaquetar ningún ISO de
+terceros— cuyo origen y atribución se documentan en `docs/IK4lN3.md`.
+
+### Added
+- **Target `iK4lN3`** (`forensics/ik4ln3/`), que convierte un clon
+  Ubuntu/Asahi en un entorno forense completo:
+  - **Escritorio MATE** sobre la base, con LightDM como gestor y MATE
+    como sesión por defecto (fuerza slick-greeter sobre arctica para el
+    branding del login).
+  - **Toolset forense arm64** (~121 paquetes del archivo de Ubuntu + un
+    pequeño conjunto pip en venv aislado), con `guard.sh` que protege
+    kernel y GRUB durante la instalación. Ver
+    `forensics/ik4ln3/packages-skip.txt` para lo excluido en arm64.
+  - **Menú "Forensic Tools"** generado a partir de lo realmente
+    instalado (cero lanzadores muertos), con panel clásico arriba y
+    menú tipo Windows (Brisk) abajo.
+  - **Write-blocker forense por software**: udev + servicio de arranque
+    + CLI (`ik4ln3-writeblock`) + GUI (`ik4ln3-mounter`). Bloquea en
+    solo-lectura los discos de evidencia y deja escribibles los del
+    sistema (root/boot/swap y su cadena LUKS/LVM), con fail-safe: si no
+    puede confirmar el disco de sistema, no arma.
+  - **Branding + tema Yaru-blue-dark** (wallpaper de escritorio, imagen
+    de login) y **boot splash Plymouth** (logo + rastro de huellas +
+    prompt LUKS) que degrada a texto donde el framebuffer no está
+    disponible tan temprano (habitual en Asahi).
+
+### Fixed
+- La instalación de paquetes fallaba en un sistema recién arrancado
+  porque `unattended-upgrades` retenía el lock de dpkg. El target
+  iK4lN3 ahora detiene y enmascara `unattended-upgrades` / `apt-daily`
+  y espera al lock antes de instalar (un appliance forense tampoco debe
+  hacer upgrades automáticos que romperían el acople kernel/GPU de
+  Asahi).
+
+### Notes
+- El write-blocker por software es una **red de seguridad, no un
+  bloqueador hardware** (SG_IO puede saltárselo); ver
+  `forensics/ik4ln3/writeblock/README.md`. Verifica siempre con
+  `ik4ln3-writeblock status` que tu disco de sistema sale como `SYSTEM`
+  antes de fiarte.
+- El código del instalador no hace referencia explícita a otras
+  distribuciones forenses; el origen y la atribución de iK4lN3 están en
+  `docs/IK4lN3.md`.
+
 ## [1.5.1] - 2026-09-27
 
 Ciclo de pruebas de regresión sobre las cuatro distros (Kali, Parrot,
@@ -683,7 +733,9 @@ las distros en un único mecanismo coherente.
   `docs/TROUBLESHOOTING.md`): final verdict on the three forensic tools
   investigated for Ubuntu — SIFT integrated (official arm64), REMnux
   discarded (no ARM support per its own documentation, confirmed live),
-  CAINE discarded (not a convertible-repository model). Also added the
+  and a third, live-ISO forensic environment set aside as a model
+  mismatch (later reimplemented independently as iK4lN3 in 2.0.0; see
+  `docs/IK4lN3.md`). Also added the
   general method for checking arm64 package availability
   (`apt-cache policy`, `rmadison`, architecture searches on
   Debian/Ubuntu/Launchpad).

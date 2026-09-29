@@ -1,0 +1,21 @@
+# packages-renamed.txt
+# Legacy (Ubuntu 22.04 / jammy) package name  ->  Ubuntu 24.04 (noble) name
+#
+# These exist on noble arm64 but under a different (renamed / absorbed /
+# transitional) package name. 10_install_ik4ln3_apt.sh reads the SECOND
+# column and installs that. Format: "<old> <new>", one pair per line;
+# '#' comments and blank lines ignored.
+
+android-tools-adb        adb
+android-tools-fastboot   fastboot
+wireshark-qt             wireshark
+mime-support             mailcap
+netcat                   netcat-openbsd
+cython                   cython3
+swig4.0                  swig
+python-pip-whl           python3-pip-whl
+odbcinst1debian2         libodbcinst2
+
+# qemu-efi is a metapackage that on arm64 resolves to the aarch64 image;
+# only needed if you actually run VMs from the forensic box.
+qemu-efi                 qemu-efi-aarch64

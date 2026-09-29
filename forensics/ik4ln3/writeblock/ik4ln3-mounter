@@ -1,0 +1,50 @@
+#!/bin/bash
+# ik4ln3-mounter — a small GUI front-end for the iK4lN3 write-blocker, in
+# the spirit of a forensic "mounter": see every disk, its read-only state,
+# and whether it's a protected system disk; flip a disk writable/blocked or
+# toggle the global policy. Privileged actions go through pkexec.
+#
+# Uses yad if available (richer list), else falls back to zenity.
+
+LIB="/usr/lib/ik4ln3/writeblock-lib.sh"
+. "$LIB" 2>/dev/null || { command -v zenity >/dev/null && zenity --error --text="write-blocker not installed"; exit 1; }
+
+CLI="ik4ln3-writeblock"
+runpriv() { pkexec "$CLI" "$@" 2>/dev/null || sudo -A "$CLI" "$@" 2>/dev/null || "$CLI" "$@"; }
+
+rows() {
+    for disk in $(all_disks); do
+        if is_protected "$disk"; then role="SYSTEM"; elif [ -f "${WB_ALLOWDIR}/${disk}" ]; then role="evidence (manual RW)"; else role="evidence"; fi
+        dev_is_ro "$disk" && state="READ-ONLY" || state="writable"
+        size="$(lsblk -dnro SIZE "/dev/$disk" 2>/dev/null)"
+        model="$(lsblk -dnro MODEL "/dev/$disk" 2>/dev/null | sed 's/  */ /g')"
+        printf '%s\n%s\n%s\n%s\n%s\n' "$disk" "$state" "$role" "${size:-?}" "${model:- }"
+    done
+}
+
+if command -v yad >/dev/null 2>&1; then
+    while :; do
+        if policy_on; then gstate="Global write-blocking: ON"; else gstate="Global write-blocking: OFF"; fi
+        sel="$(rows | yad --list --title="iK4lN3 Mounter" --width=620 --height=420 \
+              --text="<b>${gstate}</b>\nSoftware write-blocker — a safety net, not a hardware blocker (SG_IO can bypass it)." \
+              --column=Disk --column=State --column=Role --column=Size --column=Model \
+              --button="Make writable!media-eject:2" \
+              --button="Block (RO)!changes-prevent:4" \
+              --button="Toggle global!system-run:6" \
+              --button="Refresh!view-refresh:8" \
+              --button="Close!window-close:1" --print-column=1)"
+        ret=$?
+        disk="$(echo "$sel" | cut -d'|' -f1)"
+        case $ret in
+            2) [ -n "$disk" ] && runpriv allow "$disk" ;;
+            4) [ -n "$disk" ] && runpriv block "$disk" ;;
+            6) if policy_on; then runpriv off; else runpriv on; fi ;;
+            8) : ;;
+            *) break ;;
+        esac
+    done
+else
+    # zenity fallback: plain list + single action prompt
+    txt="$(ik4ln3-writeblock status)"
+    zenity --info --title="iK4lN3 Mounter" --width=520 --text="<tt>${txt}</tt>\n\nUse the terminal tool for actions:\n  ik4ln3-writeblock allow &lt;disk&gt;   (writable)\n  ik4ln3-writeblock block &lt;disk&gt;   (read-only)\n  ik4ln3-writeblock on|off"
+fi

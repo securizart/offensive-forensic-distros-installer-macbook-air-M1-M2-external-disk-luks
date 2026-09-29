@@ -60,6 +60,8 @@ STRINGS[os_sift_name]="Ubuntu + SIFT"
 STRINGS[os_sift_desc]="A clone of Ubuntu/Asahi with SIFT Workstation (SANS) installed on top. Independent partitions/volume group (vgsift) from the 'Ubuntu + REMnux' target — a distinct, independently bootable system."
 STRINGS[os_remnux_name]="Ubuntu + REMnux"
 STRINGS[os_remnux_desc]="A clone of Ubuntu/Asahi with REMnux installed on top. Independent partitions/volume group (vgremnux) from the 'Ubuntu + SIFT' target — a distinct, independently bootable system."
+STRINGS[os_ik4ln3_name]="Ubuntu + iK4lN3"
+STRINGS[os_ik4ln3_desc]="A clone of Ubuntu/Asahi turned into the iK4lN3 forensic environment: MATE desktop, the arm64 forensic toolset, a Forensic Tools menu, a software write-blocker and the iK4lN3 branding. Independent partitions/volume group (vgik4ln3) — a distinct, independently bootable system."
 
 # --- source base verification -----------------------------------------------
 STRINGS[source_base_debian_name]="Debian/Asahi"
@@ -234,5 +236,9 @@ STRINGS[step09_ubuntu_remnux_user_notice]="Creating the 'remnux' demo account (R
 STRINGS[step09_ubuntu_remnux_user_warning]="SECURITY WARNING: this is a public repository, and the 'remnux' account was just created with the well-known public demo password 'malware' (REMnux's own upstream convention for training/demo VMs, not invented by this installer). Change it before exposing this system to any network you don't fully control."
 STRINGS[step09_ubuntu_remnux_notice]="Installing REMnux via the scripts vendored from the forensics satellite project (forensics/remnux/): a full remnux.addon run, followed by cleanup of known-broken x86-64 binaries and an attempt to install native arm64 alternatives for some of them. This can take a while."
 STRINGS[step09_ubuntu_remnux_failed]="Could not complete the REMnux install (missing prerequisite). Check the step log for detail."
+STRINGS[step09_ubuntu_ik4ln3_notice]="Installing the iK4lN3 forensic environment: the MATE desktop base, the arm64-available forensic toolset (from the Ubuntu archive), the Forensic Tools menu and classic panel, the software write-blocker, and the branding/Yaru-blue-dark theme. This can take a while."
+STRINGS[step09_ubuntu_ask_ik4ln3_pip]="Also install the pip-only forensic tools (pytsk3 and a few libyal bindings) into an isolated virtualenv? Optional; nothing critical is skipped if you say no."
+STRINGS[step09_ubuntu_ik4ln3_failed]="Could not complete the iK4lN3 install (missing vendored scripts under forensics/ik4ln3/). Check the step log for detail."
+STRINGS[step09_ubuntu_ik4ln3_done]="iK4lN3 environment installed. Check this step's log and forensics/ik4ln3/packages-skip.txt for which tools were left out on arm64 and why. The write-blocker arms on first boot; the login image and theme appear after a reboot."
 STRINGS[step09_ubuntu_remnux_done]="REMnux step finished. Check this step's log and forensics/remnux/FINDINGS.md for which tools ended up unavailable on arm64."
 STRINGS[step09_ubuntu_remnux_skipped]="REMnux installation skipped."

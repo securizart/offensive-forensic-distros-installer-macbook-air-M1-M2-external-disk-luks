@@ -1,0 +1,62 @@
+# packages-skip.txt
+# iK4lN3 packages deliberately NOT installed on Ubuntu 24.04 arm64, with
+# the reason. This file is documentation only — no script reads it — but
+# it keeps the "why" next to the "what", the same way REMnux's
+# exclude-list.txt documents its known-broken states. Categories mirror
+# the four failure classes we classify by (see the project's CONTRIBUTING
+# conventions).
+#
+# [X86]      Package only builds for amd64/i386. No arm64 build possible
+#            without upstream recompiling. A partial native alternative,
+#            if any, is noted.
+# [PC]       x86-PC / firmware-specific; meaningless on Apple Silicon.
+# [PPA]      Came from a third-party PPA in the source system (marked [local] in the
+#            dpkg list), not from the Ubuntu archive. Case-by-case: some
+#            have a native noble equivalent, some must be built.
+# [OLD]      Version that no longer exists in noble (python2, GConf2,
+#            5.15 kernels, ...). Has a standard replacement or is dropped.
+# [KERNEL]   Kernel / DKMS / bootloader — NEVER installed by the iK4lN3
+#            branch, to avoid clobbering the Asahi kernel or GRUB.
+
+# ---- [X86] x86-only forensic/security tools -------------------------------
+aeskeyfind        # [X86] amd64/i386 only. Partial cover: aesfix + rsakeyfind (both arm64) are installed instead.
+cmospwd           # [X86] amd64/i386 only. No arm64 build; no native alternative.
+rar               # [X86] multiverse, amd64/i386 only. Use 'unar'/'p7zip' (installed) for extraction.
+
+# ---- [PC] x86-PC / firmware specific --------------------------------------
+syslinux          # [PC] x86 BIOS bootloader.
+syslinux-utils    # [PC]
+syslinux-legacy   # [PC]
+bcmwl-kernel-source  # [PC][KERNEL] Broadcom x86 wifi DKMS; Asahi has its own wifi driver.
+iucode-tool       # [PC] Intel microcode tool.
+intel-microcode   # [PC]
+amd64-microcode   # [PC]
+memtest86+        # [PC] x86 memtest.
+# (also every gcc-multilib / lib32*/ libx32* / xserver-xorg-video-intel*)
+
+# ---- [KERNEL] never touched by this branch --------------------------------
+grub-pc grub-pc-bin grub-gfxpayload-lists          # [KERNEL] x86 BIOS GRUB.
+grub-efi-amd64-bin grub-efi-amd64-signed           # [KERNEL] x86 EFI GRUB.
+linux-image-5.15.0-*  linux-headers-5.15.0-*        # [KERNEL] stock Ubuntu kernels; Asahi uses linux-asahi.
+linux-modules-5.15.0-*  linux-modules-extra-5.15.0-*
+lime-forensics-dkms   # [KERNEL] DKMS module: builds against the running kernel.
+                      #          Only offered as an OPT-IN sub-step, guarded on
+                      #          matching linux-asahi headers being present.
+
+# ---- [PPA] third-party, case-by-case --------------------------------------
+guymager-beta     # [PPA] Use plain 'guymager' from noble (arm64) instead — installed via packages-apt.txt.
+boot-repair boot-sav boot-sav-extra  # [PPA] x86/BIOS oriented; not applicable to the Asahi boot chain.
+grub-customizer   # [PPA] Would call grub-install/update-grub — DO NOT install; conflicts with the project's own GRUB merge (steps 06/07/10).
+ddrescue-gui      # [PPA] Optional GUI; 'gddrescue' + 'ddrescueview' (both arm64) cover the CLI/inspect need.
+fred fred-reports # [PPA] Registry editor; build from source if needed (no noble deb).
+quickhash         # [PPA] GUI hasher; 'gtkhash'/'hashdeep' (arm64) cover it.
+plaso-tools plaso-data  # [PPA] Use noble's 'python3-plaso' (arm64) — installed via packages-apt.txt.
+containerd.io bellsoft-java8-full artifacts-data  # [PPA] Not core forensic tooling.
+hddtemp           # [PPA] Obsolete; superseded by 'smartmontools' (installed).
+
+# ---- [OLD] gone from noble, replacement noted -----------------------------
+python2 python2.7 python2-minimal python2.7-minimal  # [OLD] Python 2 removed from noble. any scripts needing it must be ported.
+gconf2 gconf-service   # [OLD] GConf legacy; nothing in the arm64 toolset needs it.
+mlocate           # [OLD] -> plocate (arm64, in noble).
+youtube-dl        # [OLD] -> yt-dlp.
+cryptcat          # [OLD] Not in noble; 'ncat --ssl' (nmap, installed) covers encrypted netcat.

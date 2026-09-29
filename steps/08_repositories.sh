@@ -142,7 +142,7 @@ EOF
         echo "$(t step08_parrot_arm_notice)"
         ;;
 
-    sift|remnux)
+    sift|remnux|ik4ln3)
         # No conversion: the clone already IS genuine Ubuntu, whichever
         # of the two forensic targets this is (+SIFT or +REMnux — see
         # lib/os_catalog.sh for why they're independent clones with
@@ -234,7 +234,7 @@ fi
 # actually shown at power-on is the host's merged copy (step 07), which
 # still has the pre-conversion snapshot. Re-run step 07 from the host
 # afterward to pick up the corrected title there too.
-if [ "$TARGET_OS" != "sift" ] && [ "$TARGET_OS" != "remnux" ]; then
+if [ "$TARGET_OS" != "sift" ] && [ "$TARGET_OS" != "remnux" ] && [ "$TARGET_OS" != "ik4ln3" ]; then
     echo "$(t step08_updating_grub_title)"
     run_cmd "update-grub post-conversion" update-grub
     echo "$(t step08_rerun_07_reminder)"

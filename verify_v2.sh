@@ -1,5 +1,5 @@
 #!/bin/bash
-# verify_v151.sh — Ejecutar SIEMPRE en la carpeta app/ (raíz del
+# verify_v2.sh — Ejecutar SIEMPRE en la carpeta app/ (raíz del
 # proyecto) ANTES de lanzar install.sh, para confirmar que la copia
 # desplegada en el equipo realmente lleva los cambios de v1.5.1 y no
 # una mezcla parcial con v1.5.0 (fallo de sincronización de versiones).

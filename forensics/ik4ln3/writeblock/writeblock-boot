@@ -1,0 +1,47 @@
+#!/bin/bash
+# writeblock-boot — run once at boot by ik4ln3-writeblock.service, AFTER the
+# root/boot/swap filesystems are up. It:
+#   1. computes the system-disk whitelist (never-block set),
+#   2. refuses to arm if that set looks wrong (fail-safe),
+#   3. turns the global policy ON,
+#   4. write-blocks every non-system disk already present.
+#
+# After this runs, the udev helper handles anything hot-plugged later.
+
+LIB="/usr/lib/ik4ln3/writeblock-lib.sh"
+. "$LIB"
+
+log() { logger -t ik4ln3-writeblock "$*" 2>/dev/null; echo "ik4ln3-writeblock: $*"; }
+
+mkdir -p "$IK4LN3_RUN" "$WB_ALLOWDIR"
+
+# 1) whitelist
+compute_protected > "${WB_WHITELIST}.tmp"
+sort -u "${WB_WHITELIST}.tmp" -o "$WB_WHITELIST"
+rm -f "${WB_WHITELIST}.tmp"
+
+# 2) FAIL-SAFE: the root disk must be in the whitelist. If we couldn't
+# determine the system disks, do NOT arm blocking (never risk the OS disk).
+rootsrc="$(findmnt -nro SOURCE / 2>/dev/null)"
+rootdisk="$(disk_of "$rootsrc" | head -1)"
+if [ -z "$rootdisk" ] || ! grep -qxF "$rootdisk" "$WB_WHITELIST"; then
+    log "ABORT: could not confirm the system disk (root=$rootsrc). Write-blocking NOT armed to avoid freezing the OS. Investigate."
+    echo 0 > "$WB_POLICY"
+    exit 0
+fi
+log "protected system disks: $(tr '\n' ' ' < "$WB_WHITELIST")"
+
+# 3) arm
+echo 1 > "$WB_POLICY"
+
+# 4) block every non-system disk present right now
+n=0
+for disk in $(all_disks); do
+    is_protected "$disk" && continue
+    [ -f "${WB_ALLOWDIR}/${disk}" ] && continue
+    set_ro "$disk"
+    n=$((n+1))
+    log "blocked evidence disk: $disk"
+done
+log "armed. write-blocking ON. $n evidence disk(s) blocked at boot."
+exit 0

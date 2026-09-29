@@ -1,0 +1,92 @@
+// iK4lN3 forensic boot splash (defensive rewrite — avoids ++/+=/array-decl
+// which the Plymouth script interpreter can reject and fall back to text).
+
+Window.SetBackgroundTopColor(0.02, 0.035, 0.08);
+Window.SetBackgroundBottomColor(0.04, 0.08, 0.16);
+
+screen_w = Window.GetWidth();
+screen_h = Window.GetHeight();
+
+bg_image = Image("background.png").Scale(screen_w, screen_h);
+bg = Sprite(bg_image);
+bg.SetPosition(0, 0, -100);
+
+logo_image = Image("logo.png");
+logo = Sprite(logo_image);
+logo.SetPosition((screen_w - logo_image.GetWidth()) / 2,
+                 screen_h * 0.26 - logo_image.GetHeight() / 2, 5);
+
+paw_image = Image("paw.png");
+NUM_PAWS = 7;
+i = 0;
+while (i < NUM_PAWS) {
+    p = Sprite(paw_image);
+    px = screen_w * 0.20 + i * (screen_w * 0.60 / (NUM_PAWS - 1)) - paw_image.GetWidth() / 2;
+    py = screen_h * 0.55 + ((i - (Math.Int(i / 2) * 2)) * 26);
+    p.SetPosition(px, py, 3);
+    p.SetOpacity(0);
+    paws[i] = p;
+    i = i + 1;
+}
+
+progress = 0;
+fun refresh_cb() {
+    progress = progress + 1;
+    head = Math.Int(progress / 3);
+    head = head - (Math.Int(head / (NUM_PAWS + 6)) * (NUM_PAWS + 6));
+    i = 0;
+    while (i < NUM_PAWS) {
+        dist = head - i;
+        op = 0;
+        if (dist >= 0) {
+            op = 1 - (dist * 0.16);
+            if (op < 0) op = 0;
+        }
+        paws[i].SetOpacity(op);
+        i = i + 1;
+    }
+}
+Plymouth.SetRefreshFunction(refresh_cb);
+
+prompt_sprite = Sprite();
+bullets_sprite = Sprite();
+hint_sprite = Sprite();
+
+fun display_password_cb(prompt, bullets) {
+    ptext = prompt;
+    if (ptext == "") ptext = "Unlock encrypted disk";
+    pimg = Image.Text(ptext, 0.86, 0.91, 0.98);
+    prompt_sprite.SetImage(pimg);
+    prompt_sprite.SetPosition((screen_w - pimg.GetWidth()) / 2, screen_h * 0.70, 10);
+
+    bstr = "";
+    j = 0;
+    while (j < bullets) {
+        bstr = bstr + "*";
+        j = j + 1;
+    }
+    bimg = Image.Text(bstr, 1.0, 0.47, 0.08);
+    bullets_sprite.SetImage(bimg);
+    bullets_sprite.SetPosition((screen_w - bimg.GetWidth()) / 2, screen_h * 0.75, 10);
+
+    himg = Image.Text("iK4lN3 - the truth leaves a trace", 0.45, 0.55, 0.72);
+    hint_sprite.SetImage(himg);
+    hint_sprite.SetPosition((screen_w - himg.GetWidth()) / 2, screen_h * 0.90, 10);
+}
+Plymouth.SetDisplayPasswordFunction(display_password_cb);
+
+fun display_normal_cb() {
+    blank = Image.Text("", 0, 0, 0);
+    prompt_sprite.SetImage(blank);
+    bullets_sprite.SetImage(blank);
+    hint_sprite.SetImage(blank);
+}
+Plymouth.SetDisplayNormalFunction(display_normal_cb);
+
+message_sprite = Sprite();
+fun message_cb(text) {
+    mimg = Image.Text(text, 0.55, 0.65, 0.80);
+    message_sprite.SetImage(mimg);
+    message_sprite.SetPosition((screen_w - mimg.GetWidth()) / 2, screen_h * 0.85, 10);
+}
+Plymouth.SetMessageFunction(message_cb);
