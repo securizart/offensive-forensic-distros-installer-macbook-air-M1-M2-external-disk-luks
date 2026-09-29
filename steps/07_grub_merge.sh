@@ -248,7 +248,7 @@ cat > "$DISK_SIBLINGS_SCRIPT" <<'DISK_SIBLINGS_EOF'
 # (unlike its root) — no LUKS passphrase needed for any target but this
 # one.
 set -e
-for sibling_id in kali parrot sift remnux; do
+for sibling_id in kali parrot sift remnux ik4ln3; do
     [ "$sibling_id" = "@@TARGET_OS@@" ] && continue
     dev="$(blkid -L "boot_${sibling_id}" 2>/dev/null || true)"
     [ -z "$dev" ] && continue

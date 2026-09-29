@@ -556,3 +556,89 @@ install_remnux_arm64() {
     fi
     return 0
 }
+
+# install_ik4ln3_arm64 INCLUDE_PIP
+# Builds the iK4lN3 forensic environment on an Ubuntu/Asahi clone by
+# orchestrating the scripts vendored under forensics/ik4ln3/: the MATE
+# desktop base, the arm64 forensic toolset (apt, + optional pip extras),
+# the "Forensic Tools" menu and panel, the software write-blocker, and the
+# branding/theme. Individual tool failures are logged, not fatal.
+#
+# The caller (steps/09) holds the kernel + GPU userspace stack around this
+# whole function, exactly as it does for sift/remnux, because installing
+# ubuntu-mate-desktop and the toolset can pull package upgrades as a side
+# effect on Ubuntu/Asahi (see docs/TROUBLESHOOTING.md). The forensic
+# toolset's own guard (forensics/ik4ln3/guard.sh) additionally protects
+# GRUB and the kernel during its apt transaction.
+install_ik4ln3_arm64() {
+    local include_pip="${1:-no}"
+    local dir="${BASE_DIR}/forensics/ik4ln3"
+
+    if [ ! -f "${dir}/10_install_ik4ln3_apt.sh" ]; then
+        log_error "forensics/ik4ln3/10_install_ik4ln3_apt.sh not found under ${BASE_DIR}. iK4lN3 install skipped."
+        return 1
+    fi
+    chmod +x "${dir}"/*.sh "${dir}"/writeblock/* 2>/dev/null || true
+    export BASE_DIR MASTER_LOG
+
+    # A freshly-booted Ubuntu runs unattended-upgrades / apt-daily, which grab
+    # the dpkg lock and make EVERY apt install here fail ("Could not get lock
+    # /var/lib/dpkg/lock-frontend"). Stop and mask them and wait for the lock.
+    # A forensic appliance wants these off anyway — an unattended kernel/GPU
+    # upgrade would break the Asahi coupling.
+    log_info "Disabling unattended-upgrades / apt-daily so they don't hold the dpkg lock..."
+    systemctl stop unattended-upgrades.service apt-daily.service apt-daily-upgrade.service \
+        apt-daily.timer apt-daily-upgrade.timer >/dev/null 2>&1 || true
+    systemctl disable apt-daily.timer apt-daily-upgrade.timer >/dev/null 2>&1 || true
+    systemctl mask unattended-upgrades.service apt-daily.service apt-daily-upgrade.service >/dev/null 2>&1 || true
+    pkill -9 -f unattended-upgrade >/dev/null 2>&1 || true
+    _wait=0
+    while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
+        [ "$_wait" -eq 0 ] && log_info "Waiting for the dpkg lock to clear..."
+        sleep 3; _wait=$((_wait+1))
+        [ "$_wait" -gt 60 ] && { log_warn "dpkg lock still held after 3 min; continuing."; break; }
+    done
+    dpkg --configure -a >/dev/null 2>&1 || true
+    log_ok "apt is ready (unattended-upgrades disabled)."
+
+    # MATE desktop base — the iK4lN3 look targets MATE, not GNOME.
+    if dpkg -l ubuntu-mate-desktop 2>/dev/null | grep -q '^ii'; then
+        log_info "ubuntu-mate-desktop already installed, skipping."
+    else
+        log_info "Installing ubuntu-mate-desktop (iK4lN3 targets the MATE desktop)..."
+        DEBIAN_FRONTEND=noninteractive run_cmd "ubuntu-mate-desktop" \
+            apt-get install -y ubuntu-mate-desktop
+    fi
+
+    # Forensic toolset (apt) — the core; brings its own kernel/GRUB guard.
+    log_info "Installing the iK4lN3 forensic toolset (apt)..."
+    run_cmd "ik4ln3 10_install_ik4ln3_apt.sh" bash "${dir}/10_install_ik4ln3_apt.sh"
+
+    # pip-only extras — optional (isolated venv, never touches system Python).
+    if [ "$include_pip" = "yes" ]; then
+        log_info "Installing the iK4lN3 pip-only tools (isolated venv)..."
+        run_cmd "ik4ln3 11_install_ik4ln3_pip.sh" bash "${dir}/11_install_ik4ln3_pip.sh"
+    else
+        log_info "iK4lN3 pip stage skipped by the user (apt-only toolset)."
+    fi
+
+    # Forensic Tools menu + classic MATE panel (needs MATE present).
+    log_info "Building the iK4lN3 Forensic Tools menu and panel..."
+    run_cmd "ik4ln3 12_install_ik4ln3_desktop.sh" bash "${dir}/12_install_ik4ln3_desktop.sh"
+
+    # Software write-blocker (udev + systemd + CLI/GUI).
+    log_info "Installing the iK4lN3 forensic write-blocker..."
+    run_cmd "ik4ln3 13_install_ik4ln3_writeblock.sh" bash "${dir}/13_install_ik4ln3_writeblock.sh"
+
+    # Branding + Yaru-blue-dark theme (desktop wallpaper, login image).
+    log_info "Applying iK4lN3 branding and the Yaru-blue-dark theme..."
+    run_cmd "ik4ln3 14_install_ik4ln3_branding.sh" bash "${dir}/14_install_ik4ln3_branding.sh"
+
+    # Boot splash (Plymouth): logo + paw-print trace + styled LUKS prompt.
+    # Rebuilds the initramfs; never mix with a kernel change.
+    log_info "Installing the iK4lN3 boot splash (Plymouth)..."
+    run_cmd "ik4ln3 15_install_ik4ln3_plymouth.sh" bash "${dir}/15_install_ik4ln3_plymouth.sh"
+
+    log_ok "iK4lN3 environment install finished. See forensics/ik4ln3/packages-skip.txt for tools left out on arm64 and why."
+    return 0
+}

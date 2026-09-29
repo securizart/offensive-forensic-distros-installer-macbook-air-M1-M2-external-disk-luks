@@ -166,14 +166,22 @@ alternatives for some of them (`docker-compose`, `redress`, `yara-x`,
 up-to-date breakdown of what does and doesn't work, and
 `forensics/README.md` for how to pull in a newer approved version.
 
-### ❌ CAINE — discarded, not a convertible-repository model
+### ✅ iK4lN3 — independent arm64 forensic environment
 
-CAINE ships as a **modified Live ISO** ("a simple Ubuntu 18.04
-customized for the computer forensics", per its own documentation), not
-as an APT repository that can be added on top of an already-installed
-base. There's no "conversion" mechanism like the one Kali, Parrot, or
-SIFT have. Discarded due to a model mismatch, not lack of arm64
-support.
+`iK4lN3` is a top-level target (source base `ubuntu`, its own volume
+group `vgik4ln3`) that turns an Ubuntu/Asahi clone into a self-contained
+forensic environment: the **MATE desktop** (LightDM greeter, MATE the
+default session), the subset of a broad open-source forensic toolset
+that installs natively on **arm64** (from the Ubuntu archive, plus a
+small pip set in an isolated venv), a **"Forensic Tools" menu** and
+classic panel, a **software write-blocker**, the **Yaru-blue-dark**
+theme with the iK4lN3 branding, and a **boot splash**. There is no
+upstream ISO or repository to convert — the environment is
+reconstructed from upstream packages and this project's own scripts
+under `forensics/ik4ln3/`. See [`docs/IK4lN3.md`](IK4lN3.md) for what
+iK4lN3 is, its background and attribution, and
+`forensics/ik4ln3/packages-skip.txt` for which tools are intentionally
+left out on arm64 and why.
 
 ## How several systems coexist on the same external disk
 

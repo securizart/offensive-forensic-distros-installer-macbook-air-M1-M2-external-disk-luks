@@ -1,0 +1,20 @@
+# packages-pip.txt
+# iK4lN3 tools that are NOT in noble as .deb but are needed and available
+# via pip (installed into an isolated venv by 11_install_ik4ln3_pip.sh, so
+# we never touch the system Python that the Asahi base depends on).
+#
+# Format: one pip requirement per line ('#' comments / blanks ignored).
+# Keep this list SMALL and audited — this is the iK4lN3 analogue of the
+# REMnux "cast install" step, not a place to pull arbitrary wheels.
+
+# Sleuth Kit Python bindings (python3-pytsk3 is gone from noble)
+pytsk3
+
+# libyal / plaso-adjacent helpers that dropped out of noble as system debs
+libesedb-python ; note: only if libesedb-utils alone isn't enough
+dfvfs
+dfwinreg
+artifacts
+
+# device inventory helper used by a couple of the forensic scripts
+getdevinfo

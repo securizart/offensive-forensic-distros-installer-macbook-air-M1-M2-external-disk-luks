@@ -1,0 +1,6 @@
+# iK4lN3 forensic software write-blocker.
+# On every block device that appears, hand it to the helper, which blocks
+# it ONLY if it is not a system disk and blocking is armed. Fires for whole
+# disks and partitions (both, so nothing slips through during enumeration).
+ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk",      RUN+="/usr/lib/ik4ln3/writeblock-udev %k"
+ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="partition", RUN+="/usr/lib/ik4ln3/writeblock-udev %k"

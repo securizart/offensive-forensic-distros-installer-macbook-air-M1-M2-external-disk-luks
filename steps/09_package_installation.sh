@@ -248,6 +248,30 @@ case "$TARGET_OS" in
         echo "$(t step09_ubuntu_remnux_done)"
         ;;
 
+    ik4ln3)
+        # Clone with the iK4lN3 forensic environment baked in: the MATE
+        # desktop, the arm64 forensic toolset (apt + optional pip), the
+        # "Forensic Tools" menu and classic panel, the software
+        # write-blocker, and the branding/Yaru-blue-dark theme — all
+        # vendored under forensics/ik4ln3/ and orchestrated by
+        # install_ik4ln3_arm64. Same "target IS the choice" reasoning as
+        # sift/remnux. Installing ubuntu-mate-desktop and the toolset can
+        # pull package upgrades as a side effect on Ubuntu/Asahi, so we
+        # hold the kernel+GPU stack around the whole thing (same guard as
+        # sift/remnux; see docs/TROUBLESHOOTING.md).
+        echo "$(t step09_ubuntu_ik4ln3_notice)"
+        IK4_PIP="no"
+        if confirm_yes_no "$(t step09_ubuntu_ask_ik4ln3_pip)"; then
+            IK4_PIP="yes"
+        fi
+        echo "$(t step09_holding_packages)"
+        HELD_PKGS="$(hold_graphics_kernel_packages)"
+        install_ik4ln3_arm64 "$IK4_PIP" || echo "$(t step09_ubuntu_ik4ln3_failed)"
+        unhold_packages "$HELD_PKGS"
+        echo "$(t step09_unholding_packages)"
+        echo "$(t step09_ubuntu_ik4ln3_done)"
+        ;;
+
     *)
         log_error "Unknown operating system: $TARGET_OS"
         exit 1

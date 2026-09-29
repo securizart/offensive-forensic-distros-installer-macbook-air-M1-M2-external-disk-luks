@@ -1,0 +1,83 @@
+#!/bin/bash
+# ik4ln3-writeblock — control the iK4lN3 forensic software write-blocker.
+#
+#   ik4ln3-writeblock status            show global state + per-disk table
+#   ik4ln3-writeblock on | off          arm / disarm blocking globally
+#   ik4ln3-writeblock allow <disk>      make one disk WRITABLE (deliberate)
+#   ik4ln3-writeblock block <disk>      re-block one disk (read-only)
+#
+# System disks (root/boot/swap chain) are always protected and never
+# blocked; you cannot "block" them and they always show as SYSTEM.
+#
+# NOTE: software write-blocking is a safety net, not a hardware write
+# blocker. blockdev --setro / ro instruct the drivers but do not stop every
+# possible kernel write, and SG_IO passes SCSI commands straight through the
+# flag. For court-defensible acquisition, use a hardware write blocker.
+
+LIB="/usr/lib/ik4ln3/writeblock-lib.sh"
+. "$LIB" 2>/dev/null || { echo "write-blocker not installed (missing $LIB)"; exit 1; }
+
+need_root() { [ "$(id -u)" -eq 0 ] || exec sudo -- "$0" "$@"; }
+
+cmd="${1:-status}"; arg="${2:-}"
+
+case "$cmd" in
+  status|list)
+    if policy_on; then echo "Global write-blocking: ON (forensic default)"
+    else echo "Global write-blocking: OFF"; fi
+    printf '%-14s %-10s %s\n' "DISK" "STATE" "ROLE"
+    for disk in $(all_disks); do
+        if is_protected "$disk"; then role="SYSTEM (never blocked)"
+        elif [ -f "${WB_ALLOWDIR}/${disk}" ]; then role="evidence (manual RW)"
+        else role="evidence"; fi
+        if dev_is_ro "$disk"; then state="READ-ONLY"; else state="writable"; fi
+        printf '%-14s %-10s %s\n' "$disk" "$state" "$role"
+    done
+    ;;
+
+  on)
+    need_root "$@"
+    [ -s "$WB_WHITELIST" ] || compute_protected > "$WB_WHITELIST"
+    echo 1 > "$WB_POLICY"
+    for disk in $(all_disks); do
+        is_protected "$disk" && continue
+        [ -f "${WB_ALLOWDIR}/${disk}" ] && continue
+        set_ro "$disk"
+    done
+    echo "Write-blocking ARMED. Non-system disks are read-only."
+    ;;
+
+  off)
+    need_root "$@"
+    echo 0 > "$WB_POLICY"
+    # release non-system disks so the investigator can work freely
+    for disk in $(all_disks); do
+        is_protected "$disk" && continue
+        set_rw "$disk"
+    done
+    echo "Write-blocking DISARMED. Non-system disks are writable. BE CAREFUL."
+    ;;
+
+  allow|unblock)
+    need_root "$@"
+    [ -n "$arg" ] || { echo "usage: $0 allow <disk>  (e.g. sdb)"; exit 2; }
+    d="${arg#/dev/}"
+    if is_protected "$d"; then echo "$d is a SYSTEM disk; it is already writable and never blocked."; exit 0; fi
+    mkdir -p "$WB_ALLOWDIR"; : > "${WB_ALLOWDIR}/${d}"
+    set_rw "$d"
+    echo "$d is now WRITABLE (manual override). Anything you write to it is on you."
+    ;;
+
+  block)
+    need_root "$@"
+    [ -n "$arg" ] || { echo "usage: $0 block <disk>  (e.g. sdb)"; exit 2; }
+    d="${arg#/dev/}"
+    if is_protected "$d"; then echo "$d is a SYSTEM disk; refusing to block it (would freeze the OS)."; exit 1; fi
+    rm -f "${WB_ALLOWDIR}/${d}"
+    set_ro "$d"
+    echo "$d is now READ-ONLY (write-blocked)."
+    ;;
+
+  *)
+    echo "usage: $0 {status|on|off|allow <disk>|block <disk>}"; exit 2;;
+esac

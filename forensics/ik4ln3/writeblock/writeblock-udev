@@ -1,0 +1,29 @@
+#!/bin/bash
+# writeblock-udev — invoked by udev when a block device appears.
+#   Usage: writeblock-udev <kernel-name>     (e.g. sdb, sdb1, nvme0n1)
+#
+# FAIL-SAFE ORDER: if the write-blocker hasn't been established yet this
+# boot (no policy file), or blocking is off, we do NOTHING. We never block
+# a disk until the boot service has computed which disks are the system's
+# own — otherwise we could freeze the root disk mid-boot. This means the
+# only devices ever touched here are non-system disks hot-plugged after the
+# service is up.
+
+LIB="/usr/lib/ik4ln3/writeblock-lib.sh"
+[ -r "$LIB" ] || exit 0
+# shellcheck source=/dev/null
+. "$LIB"
+
+dev="$1"
+[ -n "$dev" ] || exit 0
+
+policy_on || exit 0                 # not established yet, or globally off -> do nothing
+
+# Resolve to the whole disk and never touch a protected (system) disk.
+for disk in $(disk_of "$dev"); do
+    is_protected "$disk" && continue
+    # respect a manual per-disk RW override (investigator chose writable)
+    [ -f "${WB_ALLOWDIR}/${disk}" ] && continue
+    set_ro "$disk"
+done
+exit 0

@@ -1,0 +1,165 @@
+# packages-apt.txt
+# iK4lN3 forensic toolset — subset that installs natively on Ubuntu 24.04
+# LTS (noble) for arm64, straight from the Ubuntu archive (mostly
+# 'universe'; a few in 'main'). Cross-checked against noble's binary-arm64
+# Packages indexes: every entry here is arch 'any'/'all'/'linux-any', i.e.
+# a real arm64 build exists. One package per line; '#' comments and blank
+# lines are ignored by 10_install_ik4ln3_apt.sh.
+#
+# Deliberately EXCLUDED from this file (handled elsewhere or dropped):
+#   - GRUB / kernel / bootloader packages  -> never touched here, see
+#     the big note in steps/09_package_installation.sh (ik4ln3 branch).
+#   - x86-only tools (aeskeyfind, cmospwd, rar, syslinux*)  -> packages-skip.txt
+#   - renamed-in-noble packages            -> packages-renamed.txt
+#   - pip/source-only tools                -> packages-pip.txt
+
+# --- Disk imaging & acquisition ---
+dc3dd
+dcfldd
+gddrescue
+ddrescueview
+afflib-tools
+pff-tools
+safecopy
+myrescue
+
+# --- Filesystem / partition analysis ---
+disktype
+testdisk
+gpart
+fatcat
+hfsprogs
+hfsplus
+hfsutils
+exfat-fuse
+f2fs-tools
+btrfs-heatmap
+ext3grep
+ext4magic
+extundelete
+scrounge-ntfs
+dislocker
+zulucrypt-cli
+zulucrypt-gui
+cryptmount
+
+# --- File carving & recovery ---
+foremost
+scalpel
+magicrescue
+recoverjpeg
+recoverdm
+fdupes
+jdupes
+
+# --- Hashing & integrity ---
+hashdeep
+ssdeep
+hashid
+hashrat
+rhash
+gtkhash
+caja-gtkhash
+
+# --- Memory forensics ---
+memdump
+aesfix
+rsakeyfind
+unhide
+unhide.rb
+mac-robber
+tableau-parm
+
+# --- Windows artifacts / registry ---
+galleta
+pasco
+rifiuti
+rifiuti2
+vinetto
+undbx
+reglookup
+winregfs
+grokevt
+chntpw
+samdump2
+ophcrack
+ophcrack-cli
+
+# --- Timeline / triage ---
+python3-plaso
+mdbtools
+
+# --- Hex / binary editors & RE ---
+hexedit
+dhex
+hexcompare
+shed
+ghex
+wxhexeditor
+radare2
+capstone-tool
+binwalk
+
+# --- Steganography ---
+steghide
+stegsnow
+stegosuite
+outguess
+gifshuffle
+snowdrop
+stepic
+
+# --- Metadata / images / docs ---
+exif
+exiftags
+exiv2
+metacam
+libimage-exiftool-perl
+imagemagick
+antiword
+catdoc
+unrtf
+pev
+
+# --- Secure wipe ---
+nwipe
+wipe
+bleachbit
+
+# --- Network forensics / capture ---
+wireshark
+tshark
+tcpflow
+tcpick
+tcpreplay
+tcptrace
+tcpxtract
+ngrep
+chaosreader
+netdiscover
+nbtscan
+arp-scan
+
+# --- Anti-rootkit / audit ---
+chkrootkit
+rkhunter
+lynis
+
+# --- Password / cracking (auth) ---
+john
+hydra
+hydra-gtk
+medusa
+ncrack
+fcrackzip
+pdfcrack
+rarcrack
+sipcrack
+sucrack
+crunch
+cupp
+cewl
+
+# --- Meta / bundles ---
+forensics-all-gui
+forensics-colorize

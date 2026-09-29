@@ -1,0 +1,13 @@
+[Unit]
+Description=iK4lN3 forensic software write-blocker (arm at boot)
+Documentation=file:/usr/share/doc/ik4ln3/writeblock.md
+After=local-fs.target swap.target
+Wants=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/ik4ln3/writeblock-boot
+
+[Install]
+WantedBy=multi-user.target

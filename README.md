@@ -1,8 +1,13 @@
+<p align="center">
+  <img src="assets/logo.jpeg" alt="iK4lN3 — Offensive & Forensic Distros Installer for Apple Silicon" width="260">
+</p>
+
 # Offensive & Forensic Distros Installer for MacBook Air M1/M2 (external disk, LUKS) — internal codename `base_inst_kali`
 
 A menu-driven installer with support for **several offensive operating
-systems** (Kali Linux, Parrot Security OS) **and forensic toolkits**
-(SIFT Workstation, REMnux — each its own independently bootable Ubuntu
+systems** (Kali Linux, Parrot Security OS) **and forensic environments**
+(SIFT Workstation, REMnux, and **iK4lN3** — a full forensic desktop with
+a software write-blocker; each its own independently bootable Ubuntu
 clone) on an
 external USB disk with encrypted partitions, cloned from a
 **Debian/Asahi** (for Kali/Parrot) or **Ubuntu/Asahi** (for the SIFT
@@ -18,7 +23,8 @@ Debian/Asahi (internal NVMe) ──clones──▶ external USB disk
 
 Ubuntu/Asahi (internal NVMe) ──clones──▶ external USB disk
                                            ├── Ubuntu + SIFT (its own partitions)
-                                           └── Ubuntu + REMnux (its own partitions)
+                                           ├── Ubuntu + REMnux (its own partitions)
+                                           └── Ubuntu + iK4lN3 (its own partitions)
 ```
 
 Both bases are separate, non-converting internal installs — see
@@ -26,12 +32,14 @@ Both bases are separate, non-converting internal installs — see
 below if you want both offensive distros and forensic tools on the same
 external disk.
 
-> **CAINE was evaluated and deliberately not implemented**: it ships as
-> a modified Live ISO, not as an APT repository that can be added on top
-> of an already-cloned base, so it doesn't fit this installer's
-> conversion/Salt-states model the way Kali, Parrot, SIFT and REMnux do.
-> See [docs/OPERATING_SYSTEMS.md](docs/OPERATING_SYSTEMS.md) for the
-> full reasoning.
+> **iK4lN3** is this project's own forensic environment: an Ubuntu/MATE
+> clone with an arm64 forensic toolset, a "Forensic Tools" menu, a
+> software write-blocker, themed branding and a boot splash — an
+> independent reimplementation built from upstream packages, not a
+> repackaged third-party ISO. See [docs/IK4lN3.md](docs/IK4lN3.md) for
+> its background and attribution, and
+> [docs/OPERATING_SYSTEMS.md](docs/OPERATING_SYSTEMS.md) for how it fits
+> alongside the other targets.
 
 > ⚠️ **Project status:** actively in development. The scripts are
 > functional but not yet meant for "blind" use. Read the risks section
@@ -291,7 +299,7 @@ failed attempt.
   cares about Ubuntu as a forensics base. Official arm64 support for
   SIFT confirmed on Ubuntu 22.04/24.04. See
   [docs/OPERATING_SYSTEMS.md](docs/OPERATING_SYSTEMS.md) for the
-  full detail, including why CAINE was discarded.
+  full detail on how iK4lN3 fits alongside the other targets.
 - ~~Automatic base detection for the "Operating systems" menu~~ —
   **implemented**: step 00 detects the booted base (Debian/Asahi vs.
   Ubuntu/Asahi) and the menu only offers the operating systems that
@@ -307,7 +315,8 @@ failed attempt.
   and `forensics/README.md`.
 - Next: keep improving Parrot OS integration (its arm64 support is
   still less mature than Kali's), and track newer approved versions of
-  the forensics satellite project (REMnux extra tools, SIFT, CAINE) to
+  the forensics satellite project (REMnux extra tools, SIFT) and the
+  iK4lN3 environment to
   pull into `forensics/`.
 
 ## Prior art / Credits

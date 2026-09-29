@@ -18,13 +18,14 @@
 # No need to touch install.sh or the rest of steps/*: those are generic
 # and use $TARGET_OS to derive partition/VG/mapper names.
 
-SUPPORTED_OS=(kali parrot sift remnux)
+SUPPORTED_OS=(kali parrot sift remnux ik4ln3)
 
 declare -gA OS_LABEL_CODE=(
     [kali]="KALI"
     [parrot]="PARROT"
     [sift]="SIFT"
     [remnux]="REMNUX"
+    [ik4ln3]="IK4lN3"
 )
 
 # --- expected source base per target OS ------------------------------------
@@ -49,6 +50,7 @@ declare -gA OS_SOURCE_BASE=(
     [parrot]="debian"
     [sift]="ubuntu"
     [remnux]="ubuntu"
+    [ik4ln3]="ubuntu"
 )
 
 # Maps the booted system's /etc/os-release ID= field to our internal
@@ -76,13 +78,13 @@ os_mountpoint() { echo "/part/dest_${1}"; }
 # require touching step 02 itself — just these tables. Same values as
 # before by default, so v1.5.0 disks keep working unchanged.
 declare -gA OS_PART_EFI_SIZE=(
-    [kali]="512M" [parrot]="512M" [sift]="512M" [remnux]="512M"
+    [kali]="512M" [parrot]="512M" [sift]="512M" [remnux]="512M" [ik4ln3]="512M"
 )
 declare -gA OS_PART_BOOT_SIZE=(
-    [kali]="2G" [parrot]="2G" [sift]="2G" [remnux]="2G"
+    [kali]="2G" [parrot]="2G" [sift]="2G" [remnux]="2G" [ik4ln3]="2G"
 )
 declare -gA OS_PART_ROOT_SIZE=(
-    [kali]="87G" [parrot]="87G" [sift]="87G" [remnux]="87G"
+    [kali]="87G" [parrot]="87G" [sift]="87G" [remnux]="87G" [ik4ln3]="87G"
 )
 os_part_efi_size()  { echo "${OS_PART_EFI_SIZE[$1]:-512M}"; }
 os_part_boot_size() { echo "${OS_PART_BOOT_SIZE[$1]:-2G}"; }

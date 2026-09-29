@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=iK4lN3 Mounter
+Comment=Forensic write-blocker: view and toggle read-only disks
+Exec=ik4ln3-mounter
+Icon=drive-harddisk
+Terminal=false
+Categories=X-Forensics-disks;System;
+Keywords=forensics;writeblock;mounter;read-only;ik4ln3;
