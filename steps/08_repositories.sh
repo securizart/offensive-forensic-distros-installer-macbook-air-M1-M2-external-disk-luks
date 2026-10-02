@@ -55,11 +55,23 @@ case "$TARGET_OS" in
     kali)
         echo "$(t step08_adding_keys)"
         mkdir -p /etc/apt/keyrings
-        run_cmd "kali key" bash -c 'wget -q -O - https://archive.kali.org/archive-key.asc | gpg --dearmor -o /etc/apt/keyrings/kali-archive.gpg'
-        if [ -f /base_inst_kali/preparation/kali-archive-keyring_2025.1_all.deb ]; then
-            run_cmd "kali keyring" dpkg -i /base_inst_kali/preparation/kali-archive-keyring_2025.1_all.deb
-        else
-            log_warn "The Kali keyring .deb doesn't exist in /base_inst_kali/preparation/, download it manually if the package fails."
+        # Kali rotated its archive signing key in April 2025 (old
+        # ED444FF07D8D0BF6 -> new ED65462EC8D5E4C5) and does so every few
+        # years. archive-keyring.gpg is the current BINARY keyring and
+        # contains both keys, so fetch it directly — the old
+        # "archive-key.asc | gpg --dearmor" path breaks whenever the key
+        # changes or that URL moves ("no valid OpenPGP data"/NO_PUBKEY).
+        run_cmd "kali key" bash -c '
+            wget -q -O /etc/apt/keyrings/kali-archive.gpg https://archive.kali.org/archive-keyring.gpg \
+            || curl -fsSL -o /etc/apt/keyrings/kali-archive.gpg https://archive.kali.org/archive-keyring.gpg'
+        # verify we actually got a valid keyring, not an empty/HTML error page
+        if ! gpg --no-default-keyring --keyring /etc/apt/keyrings/kali-archive.gpg -k >/dev/null 2>&1; then
+            log_error "Kali keyring is missing/invalid after download. Check network and https://archive.kali.org/archive-keyring.gpg , then re-run. (manual fix: sudo wget -q -O /etc/apt/keyrings/kali-archive.gpg https://archive.kali.org/archive-keyring.gpg)"
+        fi
+        # optional bundled keyring .deb (installs to /usr/share/keyrings);
+        # not relied on for signing — the signed-by path above is what apt uses.
+        if ls /base_inst_kali/preparation/kali-archive-keyring_*_all.deb >/dev/null 2>&1; then
+            run_cmd "kali keyring" bash -c 'dpkg -i /base_inst_kali/preparation/kali-archive-keyring_*_all.deb'
         fi
 
         echo "$(t step08_adding_repos)"
@@ -107,7 +119,22 @@ case "$TARGET_OS" in
     parrot)
         echo "$(t step08_adding_keys)"
         mkdir -p /etc/apt/keyrings
-        run_cmd "parrot key" bash -c 'wget -q -O - https://deb.parrot.sh/parrot/misc/parrotsec.gpg | gpg --dearmor -o /etc/apt/keyrings/parrot.gpg'
+        # parrotsec.gpg may be served ARMORED or already BINARY, and Parrot
+        # rotates the key periodically. "wget | gpg --dearmor" breaks when
+        # the key is already binary (gpg: no valid OpenPGP data) -> empty
+        # keyring -> NO_PUBKEY. Detect the format and handle both.
+        run_cmd "parrot key" bash -c '
+            wget -q -O /tmp/parrot.key https://deb.parrot.sh/parrot/misc/parrotsec.gpg \
+              || curl -fsSL -o /tmp/parrot.key https://deb.parrot.sh/parrot/misc/parrotsec.gpg
+            if grep -qa "BEGIN PGP" /tmp/parrot.key; then
+                gpg --dearmor < /tmp/parrot.key > /etc/apt/keyrings/parrot.gpg
+            else
+                cp /tmp/parrot.key /etc/apt/keyrings/parrot.gpg
+            fi
+            rm -f /tmp/parrot.key'
+        if ! gpg --no-default-keyring --keyring /etc/apt/keyrings/parrot.gpg -k >/dev/null 2>&1; then
+            log_error "Parrot keyring is missing/invalid after download. Check network and https://deb.parrot.sh/parrot/misc/parrotsec.gpg , then re-run."
+        fi
 
         echo "$(t step08_adding_repos)"
         # NOTE (v1.3.0): Parrot renamed its stable/rolling suite from the

@@ -610,6 +610,12 @@ install_ik4ln3_arm64() {
             apt-get install -y ubuntu-mate-desktop
     fi
 
+    # Xorg fix: MATE runs on Xorg, which crashes on Apple Silicon's AGX GPU
+    # (glamor -> llvmpipe -> GLX segfault). Install the no-glamor config so
+    # the session starts (software rendering, fine for forensic use).
+    log_info "Installing the Xorg fix for MATE on Apple Silicon..."
+    run_cmd "ik4ln3 16_install_ik4ln3_xorg.sh" bash "${dir}/16_install_ik4ln3_xorg.sh"
+
     # Forensic toolset (apt) — the core; brings its own kernel/GRUB guard.
     log_info "Installing the iK4lN3 forensic toolset (apt)..."
     run_cmd "ik4ln3 10_install_ik4ln3_apt.sh" bash "${dir}/10_install_ik4ln3_apt.sh"

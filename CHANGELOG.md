@@ -3,6 +3,49 @@
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 All dates in YYYY-MM-DD.
 
+## [2.0.1] - 2026-10-02
+
+Correcciones de instalación y arranque descubiertas al validar iK4lN3 en
+hardware real (MacBook Air M1/M2), más documentación de los problemas
+conocidos encontrados (ver `docs/KNOWN_ISSUES.md` y `docs/issues/`).
+
+### Fixed
+- **Repositorio de Kali: error de clave GPG / NO_PUBKEY.** Kali rota su
+  clave de firma cada pocos años (vieja `ED444FF07D8D0BF6` -> nueva
+  `ED65462EC8D5E4C5`). El step 08 bajaba `archive-key.asc` y la pasaba por
+  `gpg --dearmor`, que se queda sin datos válidos al cambiar la clave.
+  Ahora descarga el keyring binario oficial
+  `https://archive.kali.org/archive-keyring.gpg` (contiene ambas claves),
+  con `curl` de fallback, y verifica que el keyring es válido.
+- **Repositorio de Parrot: error de clave GPG / NO_PUBKEY.** `parrotsec.gpg`
+  puede servirse armado o binario; `gpg --dearmor` falla sobre una clave ya
+  binaria. Ahora detecta el formato (`BEGIN PGP`) y la trata como
+  corresponda, con fallback y verificación.
+- **iK4lN3: el servidor X se cae (segfault) en Apple Silicon.** MATE usa
+  Xorg (la base GNOME usa Wayland); en Apple Silicon glamor no obtiene GL
+  por hardware, cae a llvmpipe y GLX revienta en su inicialización. Nuevo
+  `16_install_ik4ln3_xorg.sh` + `xorg/20-ik4ln3-noglamor.conf` que desactiva
+  glamor y la extensión GLX -> X arranca con render por software (suficiente
+  para un escritorio forense). Se aplica de serie al instalar MATE. Ver
+  `docs/issues/004-xorg-glx-crash-apple-silicon.md`.
+
+### Added
+- `docs/KNOWN_ISSUES.md` e `docs/issues/` con los problemas encontrados en
+  hardware real, en formato de issue (síntomas, causa raíz, workaround,
+  estado), listos para seguimiento en GitHub.
+- Nota en `README.md` sobre **apagado súbito tras GRUB después de actualizar
+  macOS** (cambio de firmware SMC; workaround `modprobe.blacklist=macsmc_power`).
+
+### Notes
+- En **M1** el escritorio usa GL por hardware; en **M2** cae a render por
+  software (la GPU G14 del M2 aún no tiene GL completo en el kernel actual de
+  Asahi, y hay un desajuste de versiones de mesa en la base). El fix de Xorg
+  se aplica a ambos por seguridad. Ver
+  `docs/issues/004-xorg-glx-crash-apple-silicon.md`.
+- El write-blocker por software mantiene sus limitaciones documentadas
+  (no equivale a un bloqueador hardware; verificar `ik4ln3-writeblock status`
+  por hardware). Ver `docs/issues/003-writeblocker-software-limits.md`.
+
 ## [2.0.0] - 2026-09-29
 
 Añade **iK4lN3**, un entorno forense propio para Apple Silicon, como

@@ -1,10 +1,4 @@
-<p align="center">
-  <img src="assets/logo.jpeg" alt="iK4lN3 — Offensive & Forensic Distros Installer for Apple Silicon" width="260">
-</p>
-
 # Offensive & Forensic Distros Installer for MacBook Air M1/M2 (external disk, LUKS) — internal codename `base_inst_kali`
-
-<img width="1024" height="1024" alt="logo" src="https://github.com/user-attachments/assets/5aef2270-0844-40c4-97a2-afa8d403764f" />
 
 A menu-driven installer with support for **several offensive operating
 systems** (Kali Linux, Parrot Security OS) **and forensic environments**
@@ -46,6 +40,35 @@ external disk.
 > ⚠️ **Project status:** actively in development. The scripts are
 > functional but not yet meant for "blind" use. Read the risks section
 > before running anything.
+
+> 🛑 **Sudden shutdown right after GRUB, following a recent macOS update?**
+> If the distribution powers **off abruptly** a moment after GRUB hands
+> off to Linux, and you have **recently updated macOS**, the cause is the
+> firmware update bundled with that macOS release: it changes the
+> MacBook's **SMC power stack**, and the current Asahi kernel's
+> power-management driver (`macsmc_power`) no longer understands the new
+> firmware, which triggers an immediate power-off.
+>
+> **Workaround (per boot):** at the GRUB menu press **`e`** to edit the
+> entry, move to the **end of the line that starts with `linux`**, and
+> append:
+>
+> ```
+> modprobe.blacklist=macsmc_power
+> ```
+>
+> then boot with **`Ctrl+X`** (or **`F10`**). Blacklisting the power
+> driver lets the system boot normally.
+>
+> This is deliberately a **per-boot workaround, not a persistent change.**
+> The Asahi kernels are expected to be updated to understand the new
+> power-management firmware; once that lands, MacBook power management
+> works again on its own. If you made the blacklist **permanent**, that
+> kernel fix would arrive but you would stay without proper power
+> management (the driver would remain blacklisted) — so making it
+> persistent is **not recommended**.
+>
+> See [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) for this and other known issues found on real hardware.
 
 ## Non-negotiable prerequisite before using this
 
