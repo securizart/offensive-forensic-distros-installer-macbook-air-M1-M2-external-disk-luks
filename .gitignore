@@ -10,4 +10,3 @@ config.sh
 # Editor
 .vscode/
 .idea/
-logs/

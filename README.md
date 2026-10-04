@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="assets/logo.jpeg" alt="iK4lN3" width="120">
-</p>
-
 # Offensive & Forensic Distros Installer for MacBook Air M1/M2 (external disk, LUKS) — internal codename `base_inst_kali`
 
 A menu-driven installer with support for **several offensive operating
